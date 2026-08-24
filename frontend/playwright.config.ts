@@ -7,12 +7,16 @@ export default defineConfig({
     timeout: 10_000,
   },
   use: {
-    baseURL: "http://127.0.0.1:3000",
+    baseURL: "http://127.0.0.1:8000",
     trace: "retain-on-failure",
   },
+  // Tests run against the exported site served by FastAPI, which is what ships.
+  // Run `npm run build` first. Reuses the Docker container if it is already up.
   webServer: {
-    command: "npm run dev -- --hostname 127.0.0.1 --port 3000",
-    url: "http://127.0.0.1:3000",
+    command:
+      "uv run --no-dev uvicorn app.main:app --host 127.0.0.1 --port 8000",
+    cwd: "../backend",
+    url: "http://127.0.0.1:8000/api/health",
     reuseExistingServer: true,
     timeout: 120_000,
   },

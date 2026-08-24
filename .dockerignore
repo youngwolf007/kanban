@@ -1,0 +1,12 @@
+.git
+.gitignore
+docs
+scripts
+frontend/node_modules
+frontend/.next
+frontend/out
+frontend/test-results
+frontend/playwright-report
+backend/.venv
+**/__pycache__
+**/.pytest_cache

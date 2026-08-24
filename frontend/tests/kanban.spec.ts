@@ -6,6 +6,27 @@ test("loads the kanban board", async ({ page }) => {
   await expect(page.locator('[data-testid^="column-"]')).toHaveCount(5);
 });
 
+test("loads without console errors", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") {
+      errors.push(message.text());
+    }
+  });
+  page.on("pageerror", (error) => errors.push(error.message));
+
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Kanban Studio" })).toBeVisible();
+
+  expect(errors).toEqual([]);
+});
+
+test("serves the api alongside the static site", async ({ request }) => {
+  const response = await request.get("/api/health");
+  expect(response.status()).toBe(200);
+  expect(await response.json()).toEqual({ status: "ok" });
+});
+
 test("adds a card to a column", async ({ page }) => {
   await page.goto("/");
   const firstColumn = page.locator('[data-testid^="column-"]').first();
@@ -14,6 +35,24 @@ test("adds a card to a column", async ({ page }) => {
   await firstColumn.getByPlaceholder("Details").fill("Added via e2e.");
   await firstColumn.getByRole("button", { name: /add card/i }).click();
   await expect(firstColumn.getByText("Playwright card")).toBeVisible();
+});
+
+test("deletes a card", async ({ page }) => {
+  await page.goto("/");
+  const column = page.getByTestId("column-col-backlog");
+  await expect(column.getByText("Align roadmap themes")).toBeVisible();
+  // Scoped to the card: dnd-kit gives the card article role="button" too, so an
+  // unscoped role lookup matches both the article and the Remove button.
+  await page.getByTestId("card-card-1").getByRole("button", { name: /^delete/i }).click();
+  await expect(column.getByText("Align roadmap themes")).toBeHidden();
+});
+
+test("renames a column", async ({ page }) => {
+  await page.goto("/");
+  const column = page.getByTestId("column-col-backlog");
+  const title = column.getByLabel("Column title");
+  await title.fill("Renamed column");
+  await expect(title).toHaveValue("Renamed column");
 });
 
 test("moves a card between columns", async ({ page }) => {

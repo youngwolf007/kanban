@@ -76,6 +76,15 @@ this plan would otherwise have to reverse engineer from the code.
 | 7 | Drag is disabled while a card is being edited | Otherwise typing inside the card can start a drag |
 | 7 | Playwright runs with `workers: 1` | Every spec drives the same user and the same stored board, so parallel runs overwrite each other |
 | 7 | `initialData` kept as a test fixture only | The backend owns the seed; the constant is tree shaken out of the bundle |
+| 8 | The `openai` SDK, not hand-rolled `httpx` | OpenRouter is OpenAI compatible, and Part 9's Structured Outputs are a first-class parameter. It depends on `httpx2`, so it agrees with the Part 2 decision instead of pulling in a second HTTP client |
+| 8 | A missing key fails at call time, not at startup | The plan said startup, but the lifespan runs inside `TestClient`, so that would have made every backend test and every native run need a live key. Only a route that calls the AI needs one |
+| 8 | Live tests are deselected by default via `addopts` | `uv run pytest` stays offline and free; `uv run pytest -m live` opts in to real calls |
+| 8 | The live check runs in the container via `compose exec`, not `pytest` | The image installs `--no-dev` and ships no tests. Calling `app.ai` directly proves the same code path with the container's own environment, without shipping test code |
+| 8 | The AI exchanges cards as an array, not the stored id-keyed map | A JSON Schema cannot require that a map's key equals its card's id, so the model keyed cards arbitrarily in 3 of 4 live runs. An array is unambiguous, and Part 9 rebuilds the map server side |
+| 9 | `PROVIDER_ROUTING` excludes DeepInfra and SiliconFlow | Pinned four runs each: one ignores `response_format` and answers in prose, the other always returns `board: null`. `require_parameters` excludes neither, because both claim support |
+| 9 | `max_retries=0` on the OpenAI client | The SDK's default of 2 multiplied with the route's own retry: six upstream calls at 30s each. Retrying belongs where the answer can be judged |
+| 9 | An unusable AI answer is a 502, never a partial write | The board is replaced whole or not at all. `BoardData` validates the model's board exactly as `PUT /api/board` validates the client's |
+| 9 | A returned board comes back in the response, not just a flag | Part 10 can render the new board straight from the chat reply with no second fetch |
 
 ### Known gotchas
 
@@ -382,24 +391,60 @@ board directly, and the UI sign in has no form left to fill.
 
 Goal: prove the backend can reach OpenRouter and get a correct answer back.
 
-- [ ] Read `OPENROUTER_API_KEY` from the environment and fail clearly at startup if it is missing
-- [ ] Add an OpenRouter client module using `openai/gpt-oss-120b`
-- [ ] Confirm the key reaches the container from the root `.env`
-- [ ] Run a live "what is 2+2" call and confirm the answer
-- [ ] Record which provider the request routed to and whether it honours strict schemas,
+- [x] Read `OPENROUTER_API_KEY` from the environment and fail clearly when it is missing
+      (at call time, not at startup; see the decision below)
+- [x] Add an OpenRouter client module using `openai/gpt-oss-120b`
+- [x] Confirm the key reaches the container from the root `.env`
+- [x] Run a live "what is 2+2" call and confirm the answer
+- [x] Record which provider the request routed to and whether it honours strict schemas,
       to settle the Part 9 approach
-- [ ] Handle a failed or timed out AI call without crashing the request
+- [x] Handle a failed or timed out AI call without crashing the request
 
 Tests:
-- [ ] A live connectivity test, marked so it can be skipped without a key, asserting the
+- [x] A live connectivity test, marked so it can be skipped without a key, asserting the
       "2+2" answer contains 4
-- [ ] A unit test with the OpenRouter call mocked, asserting the request is well formed
-- [ ] A unit test asserting an upstream failure returns a clean error, not a stack trace
+- [x] A live test that a strict JSON schema is honoured, in the card shape Part 9 will send
+- [x] A unit test with the OpenRouter call mocked, asserting the request is well formed
+- [x] A unit test asserting an upstream failure returns a clean error, not a stack trace
 
 Success criteria:
-- The live "2+2" test passes from inside the container.
-- The mocked tests pass without a network connection.
-- The chosen structured-output approach for Part 9 is decided and recorded here.
+- [x] The live "2+2" test passes from inside the container.
+- [x] The mocked tests pass without a network connection.
+- [x] The chosen structured-output approach for Part 9 is decided and recorded here.
+
+Backend went from 52 to 61 tests: 59 offline, plus 2 live ones deselected by default.
+`app/ai.py` is the whole of this part. There is no `/api/chat` route yet; that is Part 9.
+
+### The Part 9 structured-output approach
+
+Confirmed live, not assumed. `response_format` with `json_schema` and `strict: true` is
+honoured: the model returns exactly the schema's keys, with the right types and no extras.
+
+**Send cards as an array, not as the stored id-keyed map.** This is the finding that shapes
+Part 9, and it was measured rather than guessed. The stored board keys `cards` by card id,
+which in JSON Schema can only be typed as `additionalProperties: <card schema>`. Asking for
+that shape produced the right card under the wrong key in 3 of 4 runs:
+
+| Shape | Valid | Providers seen |
+| --- | --- | --- |
+| `cards` as an id-keyed map | 1 of 4 | BaseTen, AkashML, DeepInfra, Novita |
+| `cards` as an array | 4 of 4 | DeepInfra, Novita |
+
+The failures looked like `{"id": {"id": "card-9", ...}}`: the literal string `id` as the key
+instead of `card-9`. That is not the provider breaking strict mode. `{"id": {...card...}}`
+genuinely satisfies `additionalProperties: <card schema>`, because the schema constrains the
+values and says nothing about the keys. A JSON Schema simply cannot express "each key must
+equal its own card's id", so the model gets no guidance and picks something arbitrary.
+
+That invariant is exactly the third one in `docs/DATABASE.md`, so those responses would have
+been rejected by `BoardData` with a 422 and nothing would have persisted. Correct, but
+useless. So Part 9 sends and receives cards as an array and rebuilds the id-keyed map server
+side, which satisfies the invariant by construction.
+
+A second caveat. OpenRouter picks a provider per request and it varies a lot: five different
+providers appeared across these probes. Part 9 must therefore keep validating every returned
+board through the `BoardData` model rather than trusting any schema to have been enforced
+upstream, which is what the plan already calls for.
 
 ---
 
@@ -408,29 +453,73 @@ Success criteria:
 Goal: the AI always receives the board JSON plus the user's question and conversation
 history, and replies with Structured Outputs carrying a reply and an optional board update.
 
-- [ ] Define the structured response schema: `reply` (string) and `board` (full board or null)
-- [ ] Build the prompt from the current board JSON, the conversation history, and the question
-- [ ] Instruct the model to return a board only when the user asked for a change
-- [ ] Send the schema using the approach confirmed in Part 8
-- [ ] `POST /api/chat` accepts a message and history, protected by `require_user`
-- [ ] Validate any returned board with the same Pydantic models used by `PUT /api/board`
-- [ ] Persist a returned board and tell the client the board changed
-- [ ] Reject an invalid board from the model without persisting it
-- [ ] Cap conversation history to keep the prompt bounded
+- [x] Define the structured response schema: `reply` (string) and `board` (full board or null),
+      with the board's cards as an array, rebuilt into the stored id-keyed map server side
+      (see the Part 8 finding above)
+- [x] Build the prompt from the current board JSON, the conversation history, and the question
+- [x] Instruct the model to return a board only when the user asked for a change
+- [x] Send the schema using the approach confirmed in Part 8
+- [x] `POST /api/chat` accepts a message and history, protected by `require_user`
+- [x] Validate any returned board with the same Pydantic models used by `PUT /api/board`
+- [x] Persist a returned board and tell the client the board changed
+- [x] Reject an invalid board from the model without persisting it
+- [x] Cap conversation history to keep the prompt bounded
 
 Tests:
-- [ ] Mocked: a question with no board change returns a reply and leaves the board unchanged
-- [ ] Mocked: a create-card response persists the new card
-- [ ] Mocked: a move-card response persists the move
-- [ ] Mocked: an invalid board from the model is rejected and nothing is persisted
-- [ ] Mocked: conversation history is included in the request
-- [ ] `POST /api/chat` returns 401 when signed out
-- [ ] Live: asking the AI to add a card actually adds it
+- [x] Mocked: a question with no board change returns a reply and leaves the board unchanged
+- [x] Mocked: a create-card response persists the new card
+- [x] Mocked: a move-card response persists the move
+- [x] Mocked: an invalid board from the model is rejected and nothing is persisted
+- [x] Mocked: conversation history is included in the request
+- [x] `POST /api/chat` returns 401 when signed out
+- [x] Live: asking the AI to add a card actually adds it
 
 Success criteria:
-- The AI can create, edit, and move cards through chat, and the changes persist.
-- A malformed model response never corrupts the stored board.
-- Mocked tests pass with no network. The live test passes in the container.
+- [x] The AI can create, edit, and move cards through chat, and the changes persist.
+- [x] A malformed model response never corrupts the stored board.
+- [x] Mocked tests pass with no network. The live test passes in the container.
+
+Backend went from 61 to 85 tests: 81 offline, plus 4 live. Vitest 38 and Playwright 21
+unchanged. Verified over HTTP against the running container: `POST /api/chat` is 401 signed
+out, "Add a card titled Buy milk to the Backlog column" took the board from 8 cards to 9 and
+a following `GET /api/board` returned the stored change, "How many cards are on the board?"
+answered without touching it, and "Move it to Done" resolved *it* from the conversation
+history and moved the right card.
+
+### Making the model reliable
+
+The route was straightforward. Getting a trustworthy answer out of the model was not, and
+this is the part worth reading. The first live run failed 2 times in 5, and each cause was
+different and only found by measuring.
+
+**DeepInfra ignores `response_format` entirely.** Pinned four times, it answered
+`There are eight cards on the board.` as prose, four times out of four. OpenRouter's
+`require_parameters` does not exclude it, because it does advertise support.
+
+**SiliconFlow always returns `board: null`.** Pinned four times on a request to add a card,
+it never once returned a board, so the change was silently dropped while the reply claimed
+success. Also unaffected by `require_parameters`.
+
+Both are named in `PROVIDER_ROUTING` in `app/ai.py` and excluded. CoreWeave, AkashML and
+Mancer 2 were 4 of 4 correct when pinned, so the exclusions are narrow and evidence based
+rather than a whitelist that would break when OpenRouter's roster changes.
+
+**gpt-oss is a reasoning model, and sometimes answers with nothing.** Roughly one call in
+ten came back with `content: null` and `finish_reason: "stop"`, the actual answer stranded
+in the `reasoning` field. Reasoning effort made no reliable difference. Since OpenRouter
+routes each attempt afresh, retrying is the fix: `ATTEMPTS = 3` in `app/chat.py`.
+
+**The model would claim a change while returning `board: null`.** A reply of
+`The card "Buy milk" was added` with no board means nothing was stored. Naming that
+explicitly in the system prompt, that saying so while `board` is null is a lie and leaves
+the board untouched, took it from failing regularly to 6 of 6 clean.
+
+Together these took the live suite from 3 of 5 runs clean to 8 of 8.
+
+The lesson for anyone extending this: nothing about the model's output is guaranteed, not
+the schema, not the required keys, not even that there is any content. `BoardData` validates
+every returned board for that reason, and a response that cannot be used is a clean 502 with
+the stored board untouched, never a partial write.
 
 ---
 

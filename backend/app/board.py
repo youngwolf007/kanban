@@ -9,14 +9,19 @@ from app.models import DEFAULT_BOARD, BoardData
 router = APIRouter(prefix="/api", tags=["board"])
 
 
+def load_board(user_id: int) -> BoardData:
+    """The user's board, seeded with the demo board if they have none yet."""
+    board = get_board(user_id)
+    if board is None:
+        board = DEFAULT_BOARD
+        save_board(user_id, board)
+    return BoardData.model_validate(board)
+
+
 @router.get("/board")
 def read_board(user: sqlite3.Row = Depends(require_user)) -> BoardData:
     """The user's board, seeded with the demo board on first read."""
-    board = get_board(user["id"])
-    if board is None:
-        board = DEFAULT_BOARD
-        save_board(user["id"], board)
-    return BoardData.model_validate(board)
+    return load_board(user["id"])
 
 
 @router.put("/board")

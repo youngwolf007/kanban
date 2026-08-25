@@ -7,6 +7,7 @@ dependencies = [
     "fastapi",
     "uvicorn[standard]",
     "itsdangerous",
+    "openai>=3.3.1",
 ]
 
 [dependency-groups]
@@ -21,3 +22,7 @@ package = false
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+# Live tests hit the real OpenRouter API, so they are deselected by default.
+# Run them with: uv run pytest -m live
+markers = ["live: calls OpenRouter for real; needs OPENROUTER_API_KEY"]
+addopts = "-m 'not live'"

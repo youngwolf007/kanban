@@ -8,6 +8,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.auth import router as auth_router
 from app.board import router as board_router
+from app.chat import router as chat_router
 from app.db import init_db
 
 REPO_ROOT = Path(__file__).parent.parent.parent
@@ -28,6 +29,7 @@ app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, same_site="lax")
 
 app.include_router(auth_router)
 app.include_router(board_router)
+app.include_router(chat_router)
 
 
 @app.get("/api/health")

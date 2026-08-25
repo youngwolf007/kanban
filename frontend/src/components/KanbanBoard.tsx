@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -13,11 +13,21 @@ import {
 } from "@dnd-kit/core";
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
-import { createId, initialData, moveCard, type BoardData } from "@/lib/kanban";
+import { getBoard, saveBoard } from "@/lib/api";
+import { createId, moveCard, type BoardData } from "@/lib/kanban";
 
-export const KanbanBoard = () => {
-  const [board, setBoard] = useState<BoardData>(() => initialData);
+const RENAME_SAVE_DELAY = 500;
+
+type KanbanBoardProps = {
+  username?: string;
+  onSignOut?: () => void;
+};
+
+export const KanbanBoard = ({ username, onSignOut }: KanbanBoardProps = {}) => {
+  const [board, setBoard] = useState<BoardData | null>(null);
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const renameTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -25,7 +35,52 @@ export const KanbanBoard = () => {
     })
   );
 
-  const cardsById = useMemo(() => board.cards, [board.cards]);
+  useEffect(() => {
+    getBoard()
+      .then(setBoard)
+      .catch(() => setError("Could not load your board."));
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (renameTimer.current) {
+        clearTimeout(renameTimer.current);
+      }
+    },
+    []
+  );
+
+  const persist = useCallback(async (next: BoardData) => {
+    try {
+      await saveBoard(next);
+      setError(null);
+    } catch {
+      setError("Could not save your changes.");
+    }
+  }, []);
+
+  // Renaming fires on every keystroke, so its save waits for typing to stop.
+  const persistAfterTyping = useCallback(
+    (next: BoardData) => {
+      if (renameTimer.current) {
+        clearTimeout(renameTimer.current);
+      }
+      renameTimer.current = setTimeout(() => persist(next), RENAME_SAVE_DELAY);
+    },
+    [persist]
+  );
+
+  const applyChange = useCallback(
+    (next: BoardData, debounced = false) => {
+      setBoard(next);
+      if (debounced) {
+        persistAfterTyping(next);
+      } else {
+        persist(next);
+      }
+    },
+    [persist, persistAfterTyping]
+  );
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveCardId(event.active.id as string);
@@ -35,61 +90,95 @@ export const KanbanBoard = () => {
     const { active, over } = event;
     setActiveCardId(null);
 
-    if (!over || active.id === over.id) {
+    if (!board || !over || active.id === over.id) {
       return;
     }
 
-    setBoard((prev) => ({
-      ...prev,
-      columns: moveCard(prev.columns, active.id as string, over.id as string),
-    }));
+    const columns = moveCard(board.columns, active.id as string, over.id as string);
+    if (columns === board.columns) {
+      return;
+    }
+    applyChange({ ...board, columns });
   };
 
   const handleRenameColumn = (columnId: string, title: string) => {
-    setBoard((prev) => ({
-      ...prev,
-      columns: prev.columns.map((column) =>
-        column.id === columnId ? { ...column, title } : column
-      ),
-    }));
+    if (!board) {
+      return;
+    }
+    applyChange(
+      {
+        ...board,
+        columns: board.columns.map((column) =>
+          column.id === columnId ? { ...column, title } : column
+        ),
+      },
+      true
+    );
   };
 
   const handleAddCard = (columnId: string, title: string, details: string) => {
+    if (!board) {
+      return;
+    }
     const id = createId("card");
-    setBoard((prev) => ({
-      ...prev,
+    applyChange({
+      ...board,
       cards: {
-        ...prev.cards,
+        ...board.cards,
         [id]: { id, title, details: details || "No details yet." },
       },
-      columns: prev.columns.map((column) =>
+      columns: board.columns.map((column) =>
         column.id === columnId
           ? { ...column, cardIds: [...column.cardIds, id] }
           : column
       ),
-    }));
-  };
-
-  const handleDeleteCard = (columnId: string, cardId: string) => {
-    setBoard((prev) => {
-      return {
-        ...prev,
-        cards: Object.fromEntries(
-          Object.entries(prev.cards).filter(([id]) => id !== cardId)
-        ),
-        columns: prev.columns.map((column) =>
-          column.id === columnId
-            ? {
-                ...column,
-                cardIds: column.cardIds.filter((id) => id !== cardId),
-              }
-            : column
-        ),
-      };
     });
   };
 
-  const activeCard = activeCardId ? cardsById[activeCardId] : null;
+  const handleDeleteCard = (columnId: string, cardId: string) => {
+    if (!board) {
+      return;
+    }
+    applyChange({
+      ...board,
+      cards: Object.fromEntries(
+        Object.entries(board.cards).filter(([id]) => id !== cardId)
+      ),
+      columns: board.columns.map((column) =>
+        column.id === columnId
+          ? { ...column, cardIds: column.cardIds.filter((id) => id !== cardId) }
+          : column
+      ),
+    });
+  };
+
+  const handleEditCard = (cardId: string, title: string, details: string) => {
+    if (!board) {
+      return;
+    }
+    applyChange({
+      ...board,
+      cards: {
+        ...board.cards,
+        [cardId]: { id: cardId, title, details: details || "No details yet." },
+      },
+    });
+  };
+
+  if (!board) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 text-xs font-semibold uppercase tracking-[0.3em] text-[var(--gray-text)]">
+        <span role="status">{error ? "Board unavailable" : "Loading board"}</span>
+        {error && (
+          <p role="alert" data-testid="board-error" className="normal-case tracking-normal">
+            {error}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  const activeCard = activeCardId ? board.cards[activeCardId] : null;
 
   return (
     <div className="relative overflow-hidden">
@@ -111,15 +200,44 @@ export const KanbanBoard = () => {
                 and capture quick notes without getting buried in settings.
               </p>
             </div>
-            <div className="rounded-2xl border border-[var(--stroke)] bg-[var(--surface)] px-5 py-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[var(--gray-text)]">
-                Focus
-              </p>
-              <p className="mt-2 text-lg font-semibold text-[var(--primary-blue)]">
-                One board. Five columns. Zero clutter.
-              </p>
+            <div className="flex flex-col items-end gap-3">
+              {onSignOut && (
+                <div className="flex items-center gap-3">
+                  {username && (
+                    <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
+                      {username}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={onSignOut}
+                    className="rounded-full border border-[var(--stroke)] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--navy-dark)] transition hover:border-[var(--primary-blue)] hover:text-[var(--primary-blue)]"
+                  >
+                    Sign out
+                  </button>
+                </div>
+              )}
+              <div className="rounded-2xl border border-[var(--stroke)] bg-[var(--surface)] px-5 py-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[var(--gray-text)]">
+                  Focus
+                </p>
+                <p className="mt-2 text-lg font-semibold text-[var(--primary-blue)]">
+                  One board. Five columns. Zero clutter.
+                </p>
+              </div>
             </div>
           </div>
+
+          {error && (
+            <p
+              role="alert"
+              data-testid="board-error"
+              className="rounded-xl border border-[var(--accent-yellow)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--navy-dark)]"
+            >
+              {error}
+            </p>
+          )}
+
           <div className="flex flex-wrap items-center gap-4">
             {board.columns.map((column) => (
               <div
@@ -148,6 +266,7 @@ export const KanbanBoard = () => {
                 onRename={handleRenameColumn}
                 onAddCard={handleAddCard}
                 onDeleteCard={handleDeleteCard}
+                onEditCard={handleEditCard}
               />
             ))}
           </section>

@@ -1,68 +1,228 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { KanbanBoard } from "@/components/KanbanBoard";
-import { initialData } from "@/lib/kanban";
+import { initialData, type BoardData } from "@/lib/kanban";
+
+const jsonResponse = (status: number, body: unknown) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+
+let fetchMock: ReturnType<typeof vi.fn>;
+
+const renderBoard = async (board: BoardData = initialData) => {
+  // A fresh Response per call: a body can only be read once.
+  fetchMock = vi.fn((_input: unknown, init?: RequestInit) =>
+    Promise.resolve(
+      jsonResponse(200, init?.method === "PUT" ? JSON.parse(init.body as string) : board)
+    )
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  render(<KanbanBoard />);
+  await screen.findByTestId("column-col-backlog");
+};
+
+/** The body of the most recent PUT /api/board, as a board. */
+const lastSavedBoard = (): BoardData => {
+  const puts = fetchMock.mock.calls.filter(
+    ([, init]) => (init as RequestInit | undefined)?.method === "PUT"
+  );
+  return JSON.parse((puts.at(-1)?.[1] as RequestInit).body as string);
+};
+
+const savesMade = () =>
+  fetchMock.mock.calls.filter(
+    ([, init]) => (init as RequestInit | undefined)?.method === "PUT"
+  ).length;
 
 const getFirstColumn = () => screen.getAllByTestId(/column-/i)[0];
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
+
 describe("KanbanBoard", () => {
-  it("renders five columns", () => {
+  it("shows a loading state before the board arrives", () => {
+    vi.stubGlobal("fetch", vi.fn().mockReturnValue(new Promise(() => {})));
     render(<KanbanBoard />);
+    expect(screen.getByRole("status")).toHaveTextContent(/loading board/i);
+  });
+
+  it("renders the board it loaded from the api", async () => {
+    await renderBoard();
+    expect(fetchMock).toHaveBeenCalledWith("/api/board");
     expect(screen.getAllByTestId(/column-/i)).toHaveLength(5);
+    expect(screen.getByText("Align roadmap themes")).toBeInTheDocument();
   });
 
-  it("renders every seeded card", () => {
-    render(<KanbanBoard />);
-    for (const card of Object.values(initialData.cards)) {
-      expect(screen.getByText(card.title)).toBeInTheDocument();
-    }
-  });
-
-  it("renames a column", async () => {
-    render(<KanbanBoard />);
-    const column = getFirstColumn();
-    const input = within(column).getByLabelText("Column title");
-    await userEvent.clear(input);
-    await userEvent.type(input, "New Name");
-    expect(input).toHaveValue("New Name");
-  });
-
-  it("shows the renamed column in the header summary", async () => {
-    render(<KanbanBoard />);
-    const input = within(getFirstColumn()).getByLabelText("Column title");
-    await userEvent.clear(input);
-    await userEvent.type(input, "Renamed");
-    const header = screen.getByRole("banner");
-    expect(within(header).getByText("Renamed")).toBeInTheDocument();
-  });
-
-  it("adds and removes a card", async () => {
-    render(<KanbanBoard />);
-    const column = getFirstColumn();
-    const addButton = within(column).getByRole("button", {
-      name: /add a card/i,
+  it("renders whatever the api returns, not the local seed", async () => {
+    await renderBoard({
+      columns: [{ id: "col-backlog", title: "Only column", cardIds: ["card-x"] }],
+      cards: { "card-x": { id: "card-x", title: "From the server", details: "." } },
     });
-    await userEvent.click(addButton);
 
-    const titleInput = within(column).getByPlaceholderText(/card title/i);
-    await userEvent.type(titleInput, "New card");
-    const detailsInput = within(column).getByPlaceholderText(/details/i);
-    await userEvent.type(detailsInput, "Notes");
+    expect(screen.getAllByTestId(/column-/i)).toHaveLength(1);
+    expect(screen.getByText("From the server")).toBeInTheDocument();
+    expect(screen.queryByText("Align roadmap themes")).not.toBeInTheDocument();
+  });
 
-    await userEvent.click(within(column).getByRole("button", { name: /add card/i }));
+  it("shows an error when the board cannot be loaded", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(500, {})));
+    render(<KanbanBoard />);
+    expect(await screen.findByTestId("board-error")).toHaveTextContent(
+      /could not load your board/i
+    );
+  });
 
-    expect(within(column).getByText("New card")).toBeInTheDocument();
+  describe("saving", () => {
+    it("saves after adding a card", async () => {
+      await renderBoard();
+      const column = getFirstColumn();
+      await userEvent.click(
+        within(column).getByRole("button", { name: /add a card/i })
+      );
+      await userEvent.type(
+        within(column).getByPlaceholderText(/card title/i),
+        "Saved card"
+      );
+      await userEvent.click(
+        within(column).getByRole("button", { name: /add card/i })
+      );
 
-    const deleteButton = within(column).getByRole("button", {
-      name: /delete new card/i,
+      await waitFor(() => expect(savesMade()).toBe(1));
+      const saved = lastSavedBoard();
+      expect(
+        Object.values(saved.cards).some((card) => card.title === "Saved card")
+      ).toBe(true);
     });
-    await userEvent.click(deleteButton);
 
-    expect(within(column).queryByText("New card")).not.toBeInTheDocument();
+    it("saves after deleting a card", async () => {
+      await renderBoard();
+      await userEvent.click(
+        screen.getByRole("button", { name: /delete align roadmap themes/i })
+      );
+
+      await waitFor(() => expect(savesMade()).toBe(1));
+      expect(lastSavedBoard().cards["card-1"]).toBeUndefined();
+    });
+
+    it("saves after editing a card", async () => {
+      await renderBoard();
+      await userEvent.click(
+        screen.getByRole("button", { name: /edit align roadmap themes/i })
+      );
+
+      const title = screen.getByLabelText("Card title");
+      await userEvent.clear(title);
+      await userEvent.type(title, "Edited title");
+      const details = screen.getByLabelText("Card details");
+      await userEvent.clear(details);
+      await userEvent.type(details, "Edited details");
+      await userEvent.click(screen.getByRole("button", { name: /save card/i }));
+
+      await waitFor(() => expect(savesMade()).toBe(1));
+      expect(lastSavedBoard().cards["card-1"]).toEqual({
+        id: "card-1",
+        title: "Edited title",
+        details: "Edited details",
+      });
+    });
+
+    it("shows the edit on the board", async () => {
+      await renderBoard();
+      await userEvent.click(
+        screen.getByRole("button", { name: /edit align roadmap themes/i })
+      );
+      const title = screen.getByLabelText("Card title");
+      await userEvent.clear(title);
+      await userEvent.type(title, "Now renamed");
+      await userEvent.click(screen.getByRole("button", { name: /save card/i }));
+
+      expect(screen.getByText("Now renamed")).toBeInTheDocument();
+      expect(screen.queryByText("Align roadmap themes")).not.toBeInTheDocument();
+    });
+
+    it("cancels an edit without saving", async () => {
+      await renderBoard();
+      await userEvent.click(
+        screen.getByRole("button", { name: /edit align roadmap themes/i })
+      );
+      await userEvent.type(screen.getByLabelText("Card title"), " changed");
+      await userEvent.click(screen.getByRole("button", { name: /cancel/i }));
+
+      expect(screen.getByText("Align roadmap themes")).toBeInTheDocument();
+      expect(savesMade()).toBe(0);
+    });
+
+    it("does not save an edit with a blank title", async () => {
+      await renderBoard();
+      await userEvent.click(
+        screen.getByRole("button", { name: /edit align roadmap themes/i })
+      );
+      await userEvent.clear(screen.getByLabelText("Card title"));
+      await userEvent.click(screen.getByRole("button", { name: /save card/i }));
+
+      expect(savesMade()).toBe(0);
+    });
+
+    it("shows an error when a save fails", async () => {
+      await renderBoard();
+      fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(422, {})));
+
+      await userEvent.click(
+        screen.getByRole("button", { name: /delete align roadmap themes/i })
+      );
+
+      expect(await screen.findByTestId("board-error")).toHaveTextContent(
+        /could not save your changes/i
+      );
+    });
+
+    it("clears the error once a later save succeeds", async () => {
+      await renderBoard();
+      fetchMock.mockImplementationOnce(() => Promise.resolve(jsonResponse(500, {})));
+      await userEvent.click(
+        screen.getByRole("button", { name: /delete align roadmap themes/i })
+      );
+      expect(await screen.findByTestId("board-error")).toBeInTheDocument();
+
+      await userEvent.click(
+        screen.getByRole("button", { name: /delete gather customer signals/i })
+      );
+
+      await waitFor(() =>
+        expect(screen.queryByTestId("board-error")).not.toBeInTheDocument()
+      );
+    });
+  });
+
+  describe("column rename", () => {
+    it("updates the column immediately", async () => {
+      await renderBoard();
+      const input = within(getFirstColumn()).getByLabelText("Column title");
+      await userEvent.clear(input);
+      await userEvent.type(input, "New Name");
+      expect(input).toHaveValue("New Name");
+    });
+
+    it("debounces typing into a single save", async () => {
+      await renderBoard();
+      const input = within(getFirstColumn()).getByLabelText("Column title");
+
+      await userEvent.clear(input);
+      await userEvent.type(input, "Renamed");
+      expect(savesMade()).toBe(0);
+
+      await waitFor(() => expect(savesMade()).toBe(1), { timeout: 2000 });
+      expect(lastSavedBoard().columns[0].title).toBe("Renamed");
+    });
   });
 
   it("updates the card count when a card is added", async () => {
-    render(<KanbanBoard />);
+    await renderBoard();
     const column = getFirstColumn();
     expect(within(column).getByText("2 cards")).toBeInTheDocument();
 
@@ -81,7 +241,7 @@ describe("KanbanBoard", () => {
   });
 
   it("falls back to placeholder details when none are given", async () => {
-    render(<KanbanBoard />);
+    await renderBoard();
     const column = getFirstColumn();
     await userEvent.click(
       within(column).getByRole("button", { name: /add a card/i })
@@ -98,39 +258,22 @@ describe("KanbanBoard", () => {
   });
 
   it("does not add a card when the title is only whitespace", async () => {
-    render(<KanbanBoard />);
+    await renderBoard();
     const column = getFirstColumn();
     await userEvent.click(
       within(column).getByRole("button", { name: /add a card/i })
     );
-    await userEvent.type(
-      within(column).getByPlaceholderText(/card title/i),
-      "   "
-    );
+    await userEvent.type(within(column).getByPlaceholderText(/card title/i), "   ");
     await userEvent.click(
       within(column).getByRole("button", { name: /add card/i })
     );
 
     expect(within(column).getByText("2 cards")).toBeInTheDocument();
-  });
-
-  it("closes the new card form on cancel", async () => {
-    render(<KanbanBoard />);
-    const column = getFirstColumn();
-    await userEvent.click(
-      within(column).getByRole("button", { name: /add a card/i })
-    );
-    await userEvent.click(
-      within(column).getByRole("button", { name: /cancel/i })
-    );
-
-    expect(
-      within(column).queryByPlaceholderText(/card title/i)
-    ).not.toBeInTheDocument();
+    expect(savesMade()).toBe(0);
   });
 
   it("deletes only the card asked for", async () => {
-    render(<KanbanBoard />);
+    await renderBoard();
     const column = getFirstColumn();
     await userEvent.click(
       within(column).getByRole("button", { name: /delete align roadmap themes/i })

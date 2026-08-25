@@ -7,6 +7,14 @@ the part is considered done.
 Read `AGENTS.md` in the project root first. It holds the business requirements, technical
 decisions, colour scheme, and coding standards that govern every part of this plan.
 
+Companion documents:
+
+| Document | Covers |
+| --- | --- |
+| `docs/DATABASE.md` | Schema, board JSON, invariants, and the board API contract (Part 5) |
+| `backend/AGENTS.md` | Backend layout, routes, configuration, sessions |
+| `frontend/AGENTS.md` | Frontend layout, state, selectors, test gotchas |
+
 ## Architecture
 
 Single Docker container. A FastAPI process serves both the API and the statically exported
@@ -44,6 +52,49 @@ These were agreed before planning and are settled. Do not revisit them without a
 | Card editing | Scoped in Part 5 (schema and API contract), implemented in the UI in Part 7 |
 | AI model | `openai/gpt-oss-120b` via OpenRouter |
 
+### Implementation decisions
+
+Made while building, not agreed in advance. Each one is a judgement call that a reader of
+this plan would otherwise have to reverse engineer from the code.
+
+| Part | Decision | Why |
+| --- | --- | --- |
+| 2 | Dev dependency is `httpx2`, not `httpx` | Starlette 1.6 deprecates `httpx` for its test client and warns on every run |
+| 2 | Dockerfile had no placeholder Node stage | A build stage that builds nothing is waste; the stage arrived in Part 3 where it does work |
+| 2 | `scripts/stop.*` runs `docker compose down`, keeping the volume | Stopping the app must not destroy the database. `down -v` is the documented way to reset |
+| 3 | `StaticFiles(..., check_dir=False)` | Without it a missing `frontend/out` raises at import and every backend test fails confusingly. Now `/` simply 404s until the frontend is built, which the static test catches |
+| 3 | `frontend/out` is in `.dockerignore` | The Node stage always builds fresh; a local build must never leak into the image |
+| 3 | Playwright targets the FastAPI build with `reuseExistingServer` | Tests then exercise what ships, and reuse the running container when there is one |
+| 4 | `hashlib.scrypt` rather than bcrypt or passlib | A real KDF with a per-password salt, from the standard library, so there is no hashing dependency to keep current |
+| 4 | `SECRET_KEY` falls back to a local-only default | The root `.env` holds only `OPENROUTER_API_KEY`, so without a fallback the container would not boot |
+| 4 | Session cookie is signed, not encrypted | `SessionMiddleware` signs with `itsdangerous`. It carries only `user_id`, so the payload is readable but cannot be forged |
+| 4 | `/api/auth/me` answers 401 when signed out | Matches the plan. Chrome logs the expected 401 as a failed resource, so the console-error spec filters that one URL |
+| 4 | `db_path()` reads `DB_PATH` at call time | Lets tests point at a temp database with `monkeypatch.setenv`; reading it at import would freeze the path |
+| 5 | Whole-board `PUT`, last write wins | See `docs/DATABASE.md`. One replace route serves the frontend, card editing, and the AI alike |
+| 7 | `KanbanBoard` fetches its own board | Keeps `App` about the session only, and all board state in one component |
+| 7 | Only column rename is debounced, at 500ms | It is the one handler that fires per keystroke; moves, adds, deletes, and edits save at once |
+| 7 | Drag is disabled while a card is being edited | Otherwise typing inside the card can start a drag |
+| 7 | Playwright runs with `workers: 1` | Every spec drives the same user and the same stored board, so parallel runs overwrite each other |
+| 7 | `initialData` kept as a test fixture only | The backend owns the seed; the constant is tree shaken out of the bundle |
+
+### Known gotchas
+
+Each of these was hit in practice and cost a test run.
+
+- `@dnd-kit` gives every card article `role="button"` for keyboard sorting, and its
+  accessible name absorbs the nested Remove button's label. Scope delete lookups to the
+  card's testid or a role query matches two elements.
+- Next renders its own `role="alert"` route announcer, so `getByRole("alert")` is ambiguous
+  in Playwright. The login error carries a `login-error` testid for this reason.
+- A `Response` body can only be read once. `mockResolvedValue(new Response(...))` hands the
+  same object to every call, so the second read throws. Build a fresh response per call with
+  `mockImplementation`.
+- In an end-to-end helper, sign in through the UI before calling the API. An API login sets
+  the session cookie, the app then renders the board directly, and the UI sign in waits for
+  a login form that will never appear.
+- Mock `fetch` by URL, not by call order. Components fetch on mount, so any new fetch
+  silently shifts every ordered mock after it.
+
 ### Environment verified before planning
 
 - Docker CLI 29.7.2, Compose v5.4.0, buildx v0.36.1 are installed, and the engine runs on
@@ -54,11 +105,24 @@ These were agreed before planning and are settled. Do not revisit them without a
   `response_format`, and `tools`. Support varies by routed provider, so Part 9 must confirm
   the actual endpoint honours strict schemas.
 
+### Configuration
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `STATIC_DIR` | `frontend/out` | Directory served at `/`; the image sets `/app/static` |
+| `DB_PATH` | `pm.db` in the repo root | SQLite file; the image sets `/data/pm.db` |
+| `SECRET_KEY` | a local-only default | Signs the session cookie |
+| `OPENROUTER_API_KEY` | none | From the root `.env`, used from Part 8 |
+
 ## Conventions
 
 - Backend lives in `backend/`, managed with `uv` and a `pyproject.toml`.
 - Backend tests use `pytest` with FastAPI's `TestClient`.
 - Frontend unit tests use Vitest and Testing Library. End-to-end tests use Playwright.
+- End-to-end tests share one user and one stored board. They run with `workers: 1`, and any
+  spec that changes the board starts from `startFresh` in `frontend/tests/helpers.ts`.
+- Build the frontend before running the backend static tests or Playwright; both check what
+  is actually served.
 - Every part ends with all tests green. Do not start the next part with a red suite.
 - Tick each checkbox in this document as it is completed.
 
@@ -87,7 +151,7 @@ Goal: a Docker container that runs FastAPI, serves a placeholder static page at 
 answers an API call. No frontend build yet.
 
 - [x] Create `backend/pyproject.toml` with `fastapi`, `uvicorn[standard]`, and dev deps
-      `pytest` and `httpx`
+      `pytest` and `httpx2`
 - [x] Create `backend/app/main.py` with the FastAPI app
 - [x] Add `GET /api/health` returning `{"status": "ok"}`
 - [x] Serve a placeholder `index.html` at `/` via `StaticFiles(html=True)`
@@ -109,7 +173,8 @@ Success criteria:
 - [x] `scripts/stop.sh` (or `stop.ps1`) stops and removes the container.
 - [x] `pytest` passes in `backend/`.
 
-All verified in the running container: image builds to 362MB, `/` serves the placeholder
+All verified in the running container: image builds cleanly (362MB then, 364MB once
+Part 3 added the frontend), `/` serves the placeholder
 (HTTP 200, text/html) and its fetch of `/api/health` returns `{"status": "ok"}`, an unknown
 path returns 404, uvicorn logs no errors, `OPENROUTER_API_KEY` reaches the container from
 the root `.env`, `/data` is writable, and a file written there survives a full
@@ -158,35 +223,47 @@ fonts ship self-hosted; nothing is requested from Google at runtime.
 Goal: `/` requires a sign in with `user` / `password` before the board is visible, and the
 user can sign out.
 
-- [ ] Add a `users` table with `id`, `username`, `password_hash`, `created_at`
-- [ ] Create the database and seed the `user` account on startup if it does not exist
-- [ ] Hash the seeded password rather than storing plaintext
-- [ ] Add `SessionMiddleware` with a `SECRET_KEY` read from the environment
-- [ ] `POST /api/auth/login` validates credentials, sets the HttpOnly session cookie, returns the username
-- [ ] `POST /api/auth/logout` clears the session
-- [ ] `GET /api/auth/me` returns the username, or 401 when signed out
-- [ ] Add a `require_user` FastAPI dependency for protecting later routes
-- [ ] Build the login form component using the project palette
-- [ ] On load, the client calls `/api/auth/me` and shows either the login form or the board
-- [ ] Add a sign out control to the board header
+- [x] Add a `users` table with `id`, `username`, `password_hash`, `created_at`
+- [x] Create the database and seed the `user` account on startup if it does not exist
+- [x] Hash the seeded password rather than storing plaintext
+- [x] Add `SessionMiddleware` with a `SECRET_KEY` read from the environment
+- [x] `POST /api/auth/login` validates credentials, sets the HttpOnly session cookie, returns the username
+- [x] `POST /api/auth/logout` clears the session
+- [x] `GET /api/auth/me` returns the username, or 401 when signed out
+- [x] Add a `require_user` FastAPI dependency for protecting later routes
+- [x] Build the login form component using the project palette
+- [x] On load, the client calls `/api/auth/me` and shows either the login form or the board
+- [x] Add a sign out control to the board header
 
 Tests:
-- [ ] Backend: login with correct credentials returns 200 and sets a cookie
-- [ ] Backend: login with wrong credentials returns 401 and sets no cookie
-- [ ] Backend: `/api/auth/me` returns 401 when signed out, 200 when signed in
-- [ ] Backend: logout clears the session, and `/api/auth/me` then returns 401
-- [ ] Backend: the session cookie is marked HttpOnly
-- [ ] Vitest: the login form renders, submits, and shows an error on rejected credentials
-- [ ] Vitest: the board renders instead of the login form when the session check succeeds
-- [ ] Playwright: visiting `/` shows the login form, not the board
-- [ ] Playwright: signing in reveals the board; signing out returns to the login form
-- [ ] Playwright: reloading after sign in keeps the user signed in
+- [x] Backend: login with correct credentials returns 200 and sets a cookie
+- [x] Backend: login with wrong credentials returns 401 and sets no cookie
+- [x] Backend: `/api/auth/me` returns 401 when signed out, 200 when signed in
+- [x] Backend: logout clears the session, and `/api/auth/me` then returns 401
+- [x] Backend: the session cookie is marked HttpOnly
+- [x] Vitest: the login form renders, submits, and shows an error on rejected credentials
+- [x] Vitest: the board renders instead of the login form when the session check succeeds
+- [x] Playwright: visiting `/` shows the login form, not the board
+- [x] Playwright: signing in reveals the board; signing out returns to the login form
+- [x] Playwright: reloading after sign in keeps the user signed in
 
 Success criteria:
-- A signed-out visitor to `/` cannot see the board.
-- `user` / `password` signs in; any other credentials are rejected with a visible message.
-- The session survives a page reload and is cleared by signing out.
-- All backend, unit, and end-to-end tests pass.
+- [x] A signed-out visitor to `/` cannot see the board.
+- [x] `user` / `password` signs in; any other credentials are rejected with a visible message.
+- [x] The session survives a page reload and is cleared by signing out.
+- [x] All backend, unit, and end-to-end tests pass.
+
+Verified in the running container. Suites: backend 22 passed, Vitest 30 passed, Playwright
+14 passed, eslint clean. `set-cookie` carries `httponly; samesite=lax`, and an e2e test
+confirms `document.cookie` cannot see the session. The database is created in the Docker
+volume at `/data/pm.db` with the seeded user's password stored as a 161-character scrypt
+hash, never plaintext.
+
+Passwords use `hashlib.scrypt` from the standard library with a per-password random salt,
+so no hashing dependency was added. The session cookie is signed by `SessionMiddleware`
+(via `itsdangerous`) but not encrypted; it carries only `user_id`, so its contents are
+readable while remaining tamper-proof. `SECRET_KEY` comes from the environment and falls
+back to a documented local-only default.
 
 ---
 
@@ -195,22 +272,26 @@ Success criteria:
 Goal: an agreed, documented schema, with the board stored as JSON. Documentation and sign
 off only; no implementation in this part.
 
-- [ ] Write `docs/DATABASE.md` covering the schema, the JSON board shape, and the rationale
-- [ ] Define the `boards` table: `id`, `user_id` (unique for the MVP), `data` (JSON text), `updated_at`
-- [ ] Document the board JSON shape, matching the existing `BoardData` type in the frontend
-- [ ] Specify that cards carry `id`, `title`, and `details`, and that all three are editable
-- [ ] Define the API contract: `GET /api/board` and `PUT /api/board` (whole-board replace)
-- [ ] Document the card edit contract, which Part 7 implements in the UI
-- [ ] Document the last-write-wins trade-off of whole-board replacement
-- [ ] Document how the default board is seeded for a new user
-- [ ] Document where the database file lives and how the Docker volume persists it
-- [ ] Get explicit user sign off on `docs/DATABASE.md` before Part 6
+- [x] Write `docs/DATABASE.md` covering the schema, the JSON board shape, and the rationale
+- [x] Define the `boards` table: `id`, `user_id` (unique for the MVP), `data` (JSON text), `updated_at`
+- [x] Document the board JSON shape, matching the existing `BoardData` type in the frontend
+- [x] Specify that cards carry `id`, `title`, and `details`, and that all three are editable
+- [x] Define the API contract: `GET /api/board` and `PUT /api/board` (whole-board replace)
+- [x] Document the card edit contract, which Part 7 implements in the UI
+- [x] Document the last-write-wins trade-off of whole-board replacement
+- [x] Document how the default board is seeded for a new user
+- [x] Document where the database file lives and how the Docker volume persists it
+- [x] Get explicit user sign off on `docs/DATABASE.md` before Part 6
 
 Tests: none (documentation only).
 
 Success criteria:
-- `docs/DATABASE.md` exists and covers schema, JSON shape, API contract, and seeding.
-- The user has signed off on the schema.
+- [x] `docs/DATABASE.md` exists and covers schema, JSON shape, API contract, and seeding.
+- [x] The user has signed off on the schema.
+
+Signed off. All five decisions confirmed: JSON blob over normalized tables, one board per
+user, whole-board `PUT` with last write wins, card editing through that same `PUT`, and lazy
+seeding on first `GET`.
 
 ---
 
@@ -218,29 +299,39 @@ Success criteria:
 
 Goal: API routes that read and change the signed-in user's board, backed by SQLite.
 
-- [ ] Create the `boards` table on startup if it does not exist
-- [ ] Seed a default board for a user who has none, using the existing demo data
-- [ ] Define Pydantic models for `Card`, `Column`, and `BoardData`
-- [ ] `GET /api/board` returns the signed-in user's board
-- [ ] `PUT /api/board` validates and replaces the board, updating `updated_at`
-- [ ] Reject a board whose `cardIds` reference cards that do not exist
-- [ ] Protect both routes with the `require_user` dependency
-- [ ] Keep all database access in one module
+- [x] Create the `boards` table on startup if it does not exist
+- [x] Seed a default board for a user who has none, using the existing demo data
+- [x] Define Pydantic models for `Card`, `Column`, and `BoardData`
+- [x] `GET /api/board` returns the signed-in user's board
+- [x] `PUT /api/board` validates and replaces the board, updating `updated_at`
+- [x] Enforce all five invariants in `docs/DATABASE.md`, not only the `cardIds` one
+- [x] Protect both routes with the `require_user` dependency
+- [x] Keep all database access in `db.py`
 
 Tests:
-- [ ] `GET /api/board` returns 401 when signed out
-- [ ] `GET /api/board` seeds and returns the default board on first call
-- [ ] `PUT /api/board` persists a change that a following `GET` returns
-- [ ] `PUT /api/board` returns 422 for a malformed body
-- [ ] `PUT /api/board` returns 422 when a `cardIds` entry has no matching card
-- [ ] Two users each get their own board and cannot read each other's
-- [ ] The database file is created when it does not already exist
-- [ ] Data survives an application restart
+- [x] `GET /api/board` returns 401 when signed out
+- [x] `GET /api/board` seeds and returns the default board on first call
+- [x] `PUT /api/board` persists a change that a following `GET` returns
+- [x] `PUT /api/board` returns 422 for a malformed body
+- [x] `PUT /api/board` returns 422 for each of the five invariants in `docs/DATABASE.md`
+- [x] Two users each get their own board and cannot read each other's
+- [x] The database file is created when it does not already exist
+- [x] Data survives an application restart
 
 Success criteria:
-- Every backend test passes.
-- Deleting the database file and restarting recreates it with the seeded user and board.
-- Board changes persist across a container restart.
+- [x] Every backend test passes.
+- [x] Deleting the database file and restarting recreates it with the seeded user and board.
+- [x] Board changes persist across a container restart.
+
+Backend went from 22 to 52 tests, all passing; Vitest 30 and Playwright 14 stayed green.
+Verified against the running container: `GET /api/board` is 401 signed out, seeds the eight
+card demo board on first read, and a `PUT` carrying a card edit and a move survived a full
+`stop` then `start` cycle. An invalid board is refused with 422 and the message
+`cardIds reference cards that do not exist: ['ghost']`, leaving the stored board untouched.
+The live `boards` table holds exactly one row per user.
+
+The five invariants live in one `model_validator` on `BoardData` in `app/models.py`, so the
+same rules guard `PUT /api/board` and, from Part 9, anything the AI returns.
 
 ---
 
@@ -249,31 +340,41 @@ Success criteria:
 Goal: the board is genuinely persistent, driven by the API rather than local state. Card
 editing is implemented here.
 
-- [ ] Add a small API client module in `frontend/src/lib/`
-- [ ] Load the board from `GET /api/board` on sign in, replacing `initialData` as the source of truth
-- [ ] Show a loading state while the board is being fetched
-- [ ] Persist changes with `PUT /api/board` after move, rename, add, and delete
-- [ ] Debounce column rename so typing does not fire a request per keystroke
-- [ ] Add card editing to the UI: edit a card's title and details in place
-- [ ] Surface a visible error if a save fails
-- [ ] Keep `initialData` only as the backend's seed, not as frontend state
+- [x] Add a small API client module in `frontend/src/lib/`
+- [x] Load the board from `GET /api/board` on sign in, replacing `initialData` as the source of truth
+- [x] Show a loading state while the board is being fetched
+- [x] Persist changes with `PUT /api/board` after move, rename, add, and delete
+- [x] Debounce column rename so typing does not fire a request per keystroke
+- [x] Add card editing to the UI: edit a card's title and details in place
+- [x] Surface a visible error if a save fails
+- [x] Keep `initialData` only as the backend's seed, not as frontend state
 
 Tests:
-- [ ] Vitest: the board renders from a mocked API response
-- [ ] Vitest: moving, renaming, adding, deleting, and editing each trigger a save
-- [ ] Vitest: column rename is debounced into a single save
-- [ ] Vitest: a failed save surfaces an error to the user
-- [ ] Vitest: card edit updates title and details
-- [ ] Playwright: add a card, reload, and the card is still there
-- [ ] Playwright: edit a card, reload, and the edit persisted
-- [ ] Playwright: drag a card to another column, reload, and it stayed
-- [ ] Playwright: rename a column, reload, and the name persisted
-- [ ] Playwright: sign out and back in, and the board is unchanged
+- [x] Vitest: the board renders from a mocked API response
+- [x] Vitest: moving, renaming, adding, deleting, and editing each trigger a save
+- [x] Vitest: column rename is debounced into a single save
+- [x] Vitest: a failed save surfaces an error to the user
+- [x] Vitest: card edit updates title and details
+- [x] Playwright: add a card, reload, and the card is still there
+- [x] Playwright: edit a card, reload, and the edit persisted
+- [x] Playwright: drag a card to another column, reload, and it stayed
+- [x] Playwright: rename a column, reload, and the name persisted
+- [x] Playwright: sign out and back in, and the board is unchanged
 
 Success criteria:
-- Every board change survives a page reload and a container restart.
-- Cards can be edited, not only added and deleted.
-- The full frontend and backend suites pass.
+- [x] Every board change survives a page reload and a container restart.
+- [x] Cards can be edited, not only added and deleted.
+- [x] The full frontend and backend suites pass.
+
+Backend 52, Vitest 38 (up from 30), Playwright 21 (up from 14), eslint clean. The demo card
+text no longer appears anywhere in the shipped bundle, so the board provably comes from the
+API rather than from `initialData`.
+
+Two things this part forced. Board changes now persist, so end-to-end tests stopped being
+isolated: Playwright runs with `workers: 1` and `startFresh` resets the board between tests,
+because every spec drives the same user and the same stored board. And ordering matters in
+that helper. Signing in through the API first sets the cookie, the app then renders the
+board directly, and the UI sign in has no form left to fill.
 
 ---
 

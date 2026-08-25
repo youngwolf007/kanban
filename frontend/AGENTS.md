@@ -1,8 +1,7 @@
 # Frontend
 
 Next.js app for the Kanban board. Built as a static export and served by FastAPI. As of
-Part 3 all state still lives in React and nothing is persisted; the backend serves the
-files but the board makes no API call yet.
+Part 7 the board is loaded from and saved to the backend, so it is genuinely persistent.
 
 ## Stack
 
@@ -21,6 +20,8 @@ src/
     page.tsx       renders KanbanBoard, nothing else
     globals.css    Tailwind import and the CSS custom properties for the palette
   components/
+    App.tsx                session gate: loading, login form, or board
+    LoginForm.tsx          username and password form, calls the auth API
     KanbanBoard.tsx        owns all board state and every mutation handler
     KanbanColumn.tsx       one column, droppable, holds the sortable card list
     KanbanCard.tsx         one sortable card, with a Remove button
@@ -28,10 +29,14 @@ src/
     NewCardForm.tsx        collapsed "Add a card" button expanding to a title/details form
   lib/
     kanban.ts      types, seed data, the moveCard reducer, createId
+    api.ts         fetch wrappers for the auth and board APIs
   test/
     setup.ts       jest-dom matchers
 tests/
-  kanban.spec.ts   Playwright end-to-end specs
+  helpers.ts         DEMO_BOARD, signIn, resetBoard, startFresh
+  kanban.spec.ts     Playwright board specs
+  auth.spec.ts       Playwright sign in, sign out, and session specs
+  persistence.spec.ts  Playwright specs that reload and check the board survived
 ```
 
 `@/` is aliased to `src/` in both `tsconfig.json` and `vitest.config.ts`.
@@ -50,14 +55,25 @@ Cards are held in a flat `cards` map; each column keeps an ordered `cardIds` arr
 lives in the column, not on the card. This shape is what the backend will store as its JSON
 blob, so keep the two in step.
 
-`initialData` seeds five columns (Backlog, Discovery, In Progress, Review, Done) and eight
-cards. It is currently the frontend's source of truth; from Part 7 it becomes the backend's
-seed only.
+`initialData` is no longer the app's source of truth. The backend owns the seed, as
+`DEFAULT_BOARD` in `backend/app/models.py`, and `initialData` survives only as a test
+fixture. It is tree shaken out of the shipped bundle. If you change one, change the other.
 
 ## State
 
-`KanbanBoard` is the single stateful component. Everything else is presentational and
-receives callbacks as props.
+`App` owns the session. It calls `/api/auth/me` once on mount and renders a loading state,
+the login form, or the board. `page.tsx` renders `App` and nothing else.
+
+`KanbanBoard` owns all board state. Everything else is presentational and receives
+callbacks as props. It takes optional `username` and `onSignOut` props; when `onSignOut` is
+given it renders the sign out control in the header.
+
+The board starts as `null` and is fetched from `GET /api/board` on mount, showing a loading
+state until it arrives. Every change goes through `applyChange(next, debounced?)`, which
+sets state and then `PUT`s the whole board. Column rename passes `debounced: true` so typing
+does not fire a request per keystroke; the timer is 500ms and is cleared on unmount.
+
+A failed save sets an error shown in the header and cleared by the next successful save.
 
 - `board` holds the whole `BoardData` in one `useState`
 - `activeCardId` tracks the card being dragged, for the `DragOverlay`
@@ -98,9 +114,22 @@ rename, add, delete, the card count, and the new card form's validation and canc
 `kanban.spec.ts` covers loading, console errors, the API route, add, delete, rename, and a
 mouse-driven drag between columns.
 
-Note that `@dnd-kit` gives each card article `role="button"` for keyboard sorting, and its
-accessible name includes the nested Remove button's label. Scope delete lookups to the card
-testid, or a role query will match both elements.
+Two selector traps, both hit in practice:
+
+- `@dnd-kit` gives each card article `role="button"` for keyboard sorting, and its
+  accessible name includes the nested Remove button's label. Scope delete lookups to the
+  card testid, or a role query matches both elements.
+- Next renders its own `role="alert"` route announcer, so `getByRole("alert")` is ambiguous
+  in Playwright. Use the `login-error` testid instead.
+
+The signed-out `/api/auth/me` check answers 401 by design, and Chrome logs that as a failed
+resource. The console-error spec filters that one URL out rather than treating it as a bug.
+
+Since Part 7 the board persists, so end-to-end tests are no longer isolated by default.
+Playwright runs with `workers: 1` because every spec drives the same user and the same
+stored board, and `startFresh` resets the board between tests. Sign in through the UI before
+calling `resetBoard`: an API login sets the cookie, the app then goes straight to the board,
+and a UI sign in has no form left to fill.
 
 Playwright runs against the exported site served by FastAPI on port 8000, so the tests
 exercise what actually ships. Run `npm run build` first. `reuseExistingServer` means it
@@ -114,6 +143,10 @@ Playwright.
 
 Components expose stable test ids that both suites rely on. Do not rename them casually:
 
+- `data-testid="login-error"` on the login form's error message
+- `data-testid="board-error"` on the board's load or save error
+- `aria-label="Edit {card title}"` on each card's Edit button
+- `aria-label="Card title"` and `aria-label="Card details"` on the card edit form
 - `data-testid="column-{columnId}"` on each column
 - `data-testid="card-{cardId}"` on each card
 - `aria-label="Column title"` on the column title input
@@ -123,8 +156,6 @@ Components expose stable test ids that both suites rely on. Do not rename them c
 
 Tracked in `docs/PLAN.md`. In short:
 
-- Part 4: a login form gating the board, driven by the session cookie
-- Part 7: an API client, board state loaded and saved through the backend, card editing
 - Part 10: an AI chat sidebar that refreshes the board when the AI changes it
 
 The app stays on a single route at `/`. Login and board are chosen from client state rather

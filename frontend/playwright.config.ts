@@ -2,6 +2,9 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests",
+  // One worker: every spec drives the same signed-in user and the same stored
+  // board, so parallel runs would overwrite each other.
+  workers: 1,
   timeout: 60_000,
   expect: {
     timeout: 10_000,

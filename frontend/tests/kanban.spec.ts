@@ -1,7 +1,11 @@
 import { expect, test } from "@playwright/test";
+import { startFresh } from "./helpers";
+
+// Board changes now persist, so every test starts from the demo board.
+const signIn = startFresh;
 
 test("loads the kanban board", async ({ page }) => {
-  await page.goto("/");
+  await signIn(page);
   await expect(page.getByRole("heading", { name: "Kanban Studio" })).toBeVisible();
   await expect(page.locator('[data-testid^="column-"]')).toHaveCount(5);
 });
@@ -9,14 +13,16 @@ test("loads the kanban board", async ({ page }) => {
 test("loads without console errors", async ({ page }) => {
   const errors: string[] = [];
   page.on("console", (message) => {
-    if (message.type() === "error") {
+    // The signed-out session check answers 401 by design, and the browser logs
+    // that as a failed resource. It is expected, so it is not an app error.
+    const isExpectedSessionCheck = message.location().url.includes("/api/auth/me");
+    if (message.type() === "error" && !isExpectedSessionCheck) {
       errors.push(message.text());
     }
   });
   page.on("pageerror", (error) => errors.push(error.message));
 
-  await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Kanban Studio" })).toBeVisible();
+  await signIn(page);
 
   expect(errors).toEqual([]);
 });
@@ -28,7 +34,7 @@ test("serves the api alongside the static site", async ({ request }) => {
 });
 
 test("adds a card to a column", async ({ page }) => {
-  await page.goto("/");
+  await signIn(page);
   const firstColumn = page.locator('[data-testid^="column-"]').first();
   await firstColumn.getByRole("button", { name: /add a card/i }).click();
   await firstColumn.getByPlaceholder("Card title").fill("Playwright card");
@@ -38,7 +44,7 @@ test("adds a card to a column", async ({ page }) => {
 });
 
 test("deletes a card", async ({ page }) => {
-  await page.goto("/");
+  await signIn(page);
   const column = page.getByTestId("column-col-backlog");
   await expect(column.getByText("Align roadmap themes")).toBeVisible();
   // Scoped to the card: dnd-kit gives the card article role="button" too, so an
@@ -48,7 +54,7 @@ test("deletes a card", async ({ page }) => {
 });
 
 test("renames a column", async ({ page }) => {
-  await page.goto("/");
+  await signIn(page);
   const column = page.getByTestId("column-col-backlog");
   const title = column.getByLabel("Column title");
   await title.fill("Renamed column");
@@ -56,7 +62,7 @@ test("renames a column", async ({ page }) => {
 });
 
 test("moves a card between columns", async ({ page }) => {
-  await page.goto("/");
+  await signIn(page);
   const card = page.getByTestId("card-card-1");
   const targetColumn = page.getByTestId("column-col-review");
   const cardBox = await card.boundingBox();

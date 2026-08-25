@@ -8,6 +8,7 @@ FastAPI application. Serves the API and the static frontend from a single proces
 - Python 3.12, managed with `uv` (`pyproject.toml` plus a committed `uv.lock`)
 - FastAPI with `uvicorn[standard]`
 - `pytest` for tests, `httpx2` for the test client transport
+- `ruff` for linting, configured in `pyproject.toml`
 
 ## Layout
 
@@ -61,7 +62,12 @@ Read from the environment, both with defaults suited to running outside Docker:
 | --- | --- | --- |
 | `STATIC_DIR` | `frontend/out` | Directory served at `/`; the Docker image sets `/app/static` |
 | `DB_PATH` | `pm.db` in the repo root | SQLite file; the Docker image sets `/data/pm.db` |
-| `SECRET_KEY` | a local-only default | Signs the session cookie; set it for anything real |
+| `SECRET_KEY` | a local-only default | Signs the session cookie |
+
+The `SECRET_KEY` default is published in the source, so anything built from this repository
+would otherwise sign cookies with a key anyone could read and forge. The start scripts
+generate a real one into `.env` on first run and compose passes it through `env_file`. The
+default remains for tests and native runs.
 
 `OPENROUTER_API_KEY` comes from the root `.env` via compose `env_file`. It is read at call
 time by `ai.py`, so the app boots and the tests run without it; only a route that actually
@@ -84,6 +90,7 @@ cd ../backend && uv sync && uv run uvicorn app.main:app --port 8000
 ```
 cd backend
 uv run pytest
+uv run ruff check .
 ```
 
 That is offline and free: the `live` tests are deselected by default through `addopts`. To
@@ -114,7 +121,10 @@ import time, so tests can point at a temp file with `monkeypatch.setenv`.
 user (`user` / `password`) when that username is missing, so it is safe to run repeatedly.
 
 Passwords use `hashlib.scrypt` with a per-password random salt, stored as `salt$hex`. That
-is standard library only, so there is no hashing dependency to keep current.
+is standard library only, so there is no hashing dependency to keep current. A stored value
+without the separator fails verification rather than raising, and login hashes against
+`UNUSABLE_HASH` when the username is unknown, so its response time does not say whether an
+account exists.
 
 ## The board
 
@@ -129,6 +139,10 @@ nothing is written. From Part 9 the same validator guards whatever the AI return
 `PUT /api/board` replaces the whole board; there are no per-card routes, and writes are last
 write wins. `save_board` is an upsert on `user_id`, so a user never has two board rows.
 
+The model also caps the board's size: `MAX_COLUMNS`, `MAX_CARDS`, `MAX_TITLE_LENGTH` and
+`MAX_DETAILS_LENGTH`. The whole board goes into the AI prompt on every chat turn, so its
+size is an upstream cost, not only a storage question.
+
 ## The AI client
 
 `ai.py` wraps the `openai` SDK pointed at OpenRouter's OpenAI-compatible endpoint, using
@@ -136,7 +150,8 @@ write wins. `save_board` is an upsert on `user_id`, so a user never has two boar
 returns the reply text; `response_format` carries Part 9's Structured Outputs schema.
 
 Everything that can fail becomes an `AIError` with a message safe to show a user: a missing
-key, an upstream error, a timeout. Nothing reaches a caller as a stack trace.
+key, an upstream error, a timeout, or a response carrying no choices at all. Nothing reaches
+a caller as a stack trace.
 
 The client is synchronous, like every route handler here. FastAPI runs a sync handler in a
 threadpool, so a slow AI call does not block the event loop.
@@ -147,12 +162,18 @@ threadpool, so a slow AI call does not block the event loop.
 unless the AI changed it, so the client knows whether to re-render. History is capped at
 `MAX_HISTORY` messages to keep the prompt bounded.
 
+`message` and each history entry are capped at `MAX_MESSAGE_LENGTH`, so an oversized request
+is refused with 422 before it costs anything upstream.
+
 Cards travel to and from the model as an **array**, never as the stored id-keyed map: a JSON
 Schema cannot require that a map's key equals its own card's id, and the model keyed them
 arbitrarily when asked. `to_model_shape` and `to_stored_shape` convert between the two.
 
 Anything the model returns is validated by `BoardData`, the same model that guards
 `PUT /api/board`. A board that breaks an invariant is refused and nothing is written.
+`to_stored_shape` rejects the two things `BoardData` cannot judge for itself, because they
+happen before it sees anything: a `board` that is not an object, and two cards sharing an
+id, which would otherwise collapse into one and leave a valid board quietly missing a card.
 
 | Status | Meaning |
 | --- | --- |
@@ -166,7 +187,9 @@ The model is not dependable on its own, and the route is built around that:
 - Two providers are excluded in `ai.py`. DeepInfra ignores `response_format` and replies in
   prose; SiliconFlow always returns `board: null`, silently dropping the change.
 - `gpt-oss` sometimes returns no content at all, leaving its answer in the `reasoning`
-  field. `ATTEMPTS` in `chat.py` retries, and OpenRouter routes each attempt afresh.
+  field. `ATTEMPTS` in `chat.py` retries, and OpenRouter routes each attempt afresh. An
+  `AIError` is retried in the same loop, for the same reason: a provider that timed out is
+  usually fixed by landing on another one. The worst case is `ATTEMPTS` times the timeout.
 - The system prompt says plainly that claiming a change while `board` is null leaves the
   board untouched. Without that the model regularly said it had done something it had not.
 

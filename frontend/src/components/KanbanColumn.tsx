@@ -1,3 +1,4 @@
+import { useState } from "react";
 import clsx from "clsx";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -23,6 +24,27 @@ export const KanbanColumn = ({
   onEditCard,
 }: KanbanColumnProps) => {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
+  const [draft, setDraft] = useState(column.title);
+  const [titleInBoard, setTitleInBoard] = useState(column.title);
+
+  // Adjusted during render rather than in an effect, which is what React recommends
+  // for state derived from a prop. The board is the source of truth, so a title
+  // changed elsewhere, such as by the AI, replaces what is in the field. A blank
+  // draft never reaches the board, so nothing here overwrites it.
+  if (column.title !== titleInBoard) {
+    setTitleInBoard(column.title);
+    setDraft(column.title);
+  }
+
+  const handleChange = (value: string) => {
+    setDraft(value);
+    // The API refuses a blank title, and once the board holds one every later save
+    // fails too, with no way out but retyping. The board keeps the last usable title
+    // while the field is empty.
+    if (value.trim()) {
+      onRename(column.id, value);
+    }
+  };
 
   return (
     <section
@@ -42,10 +64,11 @@ export const KanbanColumn = ({
             </span>
           </div>
           <input
-            value={column.title}
-            onChange={(event) => onRename(column.id, event.target.value)}
+            value={draft}
+            onChange={(event) => handleChange(event.target.value)}
+            onBlur={() => setDraft(column.title)}
             className="mt-3 w-full bg-transparent font-display text-lg font-semibold text-[var(--navy-dark)] outline-none"
-            aria-label="Column title"
+            aria-label={`Column title: ${column.title}`}
           />
         </div>
       </div>

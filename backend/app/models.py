@@ -1,10 +1,20 @@
-from pydantic import BaseModel, field_validator, model_validator
+from collections import Counter
+
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+# The whole board is serialised into the AI prompt on every chat turn, so its size is
+# an upstream cost as well as a storage question. Generous for one board, and far
+# below anything that would make a prompt expensive.
+MAX_COLUMNS = 20
+MAX_CARDS = 500
+MAX_TITLE_LENGTH = 200
+MAX_DETAILS_LENGTH = 2000
 
 
 class Card(BaseModel):
     id: str
-    title: str
-    details: str = ""
+    title: str = Field(max_length=MAX_TITLE_LENGTH)
+    details: str = Field(default="", max_length=MAX_DETAILS_LENGTH)
 
     @field_validator("title")
     @classmethod
@@ -16,7 +26,7 @@ class Card(BaseModel):
 
 class Column(BaseModel):
     id: str
-    title: str
+    title: str = Field(max_length=MAX_TITLE_LENGTH)
     cardIds: list[str]
 
     @field_validator("title")
@@ -30,8 +40,8 @@ class Column(BaseModel):
 class BoardData(BaseModel):
     """The whole board. Field names match the frontend's BoardData exactly."""
 
-    columns: list[Column]
-    cards: dict[str, Card]
+    columns: list[Column] = Field(max_length=MAX_COLUMNS)
+    cards: dict[str, Card] = Field(max_length=MAX_CARDS)
 
     @model_validator(mode="after")
     def check_invariants(self) -> "BoardData":
@@ -43,9 +53,11 @@ class BoardData(BaseModel):
         if missing:
             raise ValueError(f"cardIds reference cards that do not exist: {missing}")
 
-        duplicated = {card_id for card_id in placed if placed.count(card_id) > 1}
+        duplicated = sorted(
+            card_id for card_id, seen in Counter(placed).items() if seen > 1
+        )
         if duplicated:
-            raise ValueError(f"cards appear in more than one place: {sorted(duplicated)}")
+            raise ValueError(f"cards appear in more than one place: {duplicated}")
 
         orphaned = sorted(set(self.cards) - set(placed))
         if orphaned:

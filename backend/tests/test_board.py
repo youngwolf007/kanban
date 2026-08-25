@@ -3,7 +3,13 @@ import copy
 import pytest
 
 from app.db import create_user, get_board, save_board
-from app.models import DEFAULT_BOARD
+from app.models import (
+    DEFAULT_BOARD,
+    MAX_CARDS,
+    MAX_COLUMNS,
+    MAX_DETAILS_LENGTH,
+    MAX_TITLE_LENGTH,
+)
 
 
 def a_board() -> dict:
@@ -151,6 +157,47 @@ class TestValidation:
 
     def test_an_empty_column_is_allowed(self, signed_in):
         assert signed_in.put("/api/board", json=a_small_board()).status_code == 200
+
+    def test_a_board_with_too_many_cards_is_rejected(self, signed_in):
+        board = {
+            "columns": [
+                {
+                    "id": "col-a",
+                    "title": "A",
+                    "cardIds": [f"card-{n}" for n in range(MAX_CARDS + 1)],
+                }
+            ],
+            "cards": {
+                f"card-{n}": {"id": f"card-{n}", "title": "One", "details": ""}
+                for n in range(MAX_CARDS + 1)
+            },
+        }
+        assert signed_in.put("/api/board", json=board).status_code == 422
+
+    def test_a_board_with_too_many_columns_is_rejected(self, signed_in):
+        board = {
+            "columns": [
+                {"id": f"col-{n}", "title": "A", "cardIds": []}
+                for n in range(MAX_COLUMNS + 1)
+            ],
+            "cards": {},
+        }
+        assert signed_in.put("/api/board", json=board).status_code == 422
+
+    def test_an_over_long_card_title_is_rejected(self, signed_in):
+        board = a_small_board()
+        board["cards"]["card-1"]["title"] = "x" * (MAX_TITLE_LENGTH + 1)
+        assert signed_in.put("/api/board", json=board).status_code == 422
+
+    def test_an_over_long_column_title_is_rejected(self, signed_in):
+        board = a_small_board()
+        board["columns"][0]["title"] = "x" * (MAX_TITLE_LENGTH + 1)
+        assert signed_in.put("/api/board", json=board).status_code == 422
+
+    def test_over_long_details_are_rejected(self, signed_in):
+        board = a_small_board()
+        board["cards"]["card-1"]["details"] = "x" * (MAX_DETAILS_LENGTH + 1)
+        assert signed_in.put("/api/board", json=board).status_code == 422
 
     def test_a_rejected_board_is_not_persisted(self, signed_in):
         signed_in.put("/api/board", json=a_small_board())

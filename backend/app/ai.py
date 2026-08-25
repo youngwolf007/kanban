@@ -54,4 +54,9 @@ def ask(messages: list[dict], response_format: dict | None = None) -> str:
         )
     except APIError as error:
         raise AIError(f"The AI service is unavailable: {error}") from error
+
+    # Providers vary on what they return, and one that answers with no choices at all
+    # would otherwise raise IndexError past every handler the caller has.
+    if not completion.choices:
+        raise AIError("The AI service is unavailable: it returned no answer")
     return completion.choices[0].message.content or ""

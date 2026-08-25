@@ -27,4 +27,9 @@ COPY --from=frontend /frontend/out ./static
 
 EXPOSE 8000
 
+# /api/health is served by the app itself, so this reports the app being up rather
+# than the container being up. Python is in the image already, so no extra package.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health').read()"]
+
 CMD ["uv", "run", "--no-dev", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

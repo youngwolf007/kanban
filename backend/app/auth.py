@@ -3,9 +3,18 @@ import sqlite3
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from app.db import get_user_by_id, get_user_by_username, verify_password
+from app.db import (
+    get_user_by_id,
+    get_user_by_username,
+    hash_password,
+    verify_password,
+)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+# An unknown username is checked against this, so login does the same hashing work
+# either way and its response time does not say whether a username exists.
+UNUSABLE_HASH = hash_password("no account has this password")
 
 
 class Credentials(BaseModel):
@@ -26,9 +35,10 @@ def require_user(request: Request) -> sqlite3.Row:
 @router.post("/login")
 def login(credentials: Credentials, request: Request) -> dict[str, str]:
     user = get_user_by_username(credentials.username)
-    if user is None or not verify_password(
-        credentials.password, user["password_hash"]
-    ):
+    stored = user["password_hash"] if user is not None else UNUSABLE_HASH
+    # Verify first, unconditionally: short circuiting on a missing user would skip the
+    # hashing and give the timing away.
+    if not verify_password(credentials.password, stored) or user is None:
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
     request.session["user_id"] = user["id"]

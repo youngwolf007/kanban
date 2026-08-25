@@ -25,7 +25,7 @@ src/
     KanbanBoard.tsx        owns all board state and every mutation handler
     ChatSidebar.tsx        the AI chat panel, overlaid on the board
     KanbanColumn.tsx       one column, droppable, holds the sortable card list
-    KanbanCard.tsx         one sortable card, with a Remove button
+    KanbanCard.tsx         one card, with a drag handle and Edit and Remove buttons
     KanbanCardPreview.tsx  non-interactive card rendered inside the DragOverlay
     NewCardForm.tsx        collapsed "Add a card" button expanding to a title/details form
   lib/
@@ -73,7 +73,14 @@ given it renders the sign out control in the header.
 The board starts as `null` and is fetched from `GET /api/board` on mount, showing a loading
 state until it arrives. Every change goes through `applyChange(next, debounced?)`, which
 sets state and then `PUT`s the whole board. Column rename passes `debounced: true` so typing
-does not fire a request per keystroke; the timer is 500ms and is cleared on unmount.
+does not fire a request per keystroke; the timer is 500ms.
+
+**A waiting rename holds a snapshot, so it must never outlive a newer one.** An immediate
+save cancels it, because the board it is saving already contains the rename. On unmount the
+rename is flushed instead of dropped, so renaming and signing out straight after keeps the
+name. A board arriving from the AI drops it, because that board is already stored and saving
+the older snapshot would undo it. Getting this wrong loses a change silently: the server
+takes the stale board, local state keeps the new one, and nothing looks wrong until reload.
 
 A failed save sets an error shown in the header and cleared by the next successful save.
 
@@ -85,11 +92,21 @@ A failed save sets an error shown in the header and cleared by the next successf
 `handleEditCard` updates a card's title and details in place, added in Part 7. Editing goes
 through the same whole-board `PUT` as every other change.
 
+A card with no details is stored with `details: ""`. `NO_DETAILS` in `lib/kanban.ts` is a
+render-time fallback only: the AI never writes it, so storing it would make two identical
+empty cards read differently depending on which one created them.
+
+`KanbanColumn` keeps the title field's text in a local `draft`, adjusted during render from
+`column.title` rather than in an effect, which is what React recommends for state derived
+from a prop, and what the lint rules here enforce. A blank draft is never handed to
+`onRename`: the API refuses a blank title, and a board holding one could never be saved
+again, so the board keeps the last usable title and the field restores it on blur.
+
 `ChatSidebar` owns the conversation: the messages, the draft, the pending flag, its own
 error, and whether it is open. `KanbanBoard` passes it one callback, `onBoardChange`. When a
-reply carries a board the sidebar hands it over and `KanbanBoard` adopts it with `setBoard`
-**without saving it**: `POST /api/chat` already stored it, so saving would rewrite bytes that
-had just arrived.
+reply carries a board the sidebar hands it over and `KanbanBoard` adopts it through
+`adoptBoardFromAi` **without saving it**: `POST /api/chat` already stored it, so saving would
+rewrite bytes that had just arrived.
 
 `moveCard(columns, activeId, overId)` is a pure function covering three cases: reorder
 within a column, move to a specific position in another column, and drop onto a column
@@ -122,13 +139,15 @@ rename, add, delete, the card count, and the new card form's validation and canc
 `kanban.spec.ts` covers loading, console errors, the API route, add, delete, rename, and a
 mouse-driven drag between columns.
 
-Two selector traps, both hit in practice:
+One selector trap, hit in practice:
 
-- `@dnd-kit` gives each card article `role="button"` for keyboard sorting, and its
-  accessible name includes the nested Remove button's label. Scope delete lookups to the
-  card testid, or a role query matches both elements.
 - Next renders its own `role="alert"` route announcer, so `getByRole("alert")` is ambiguous
   in Playwright. Use the `login-error` testid instead.
+
+The drag listeners sit on a dedicated handle button inside each card, not on the article.
+Carrying them on the article gave it `role="button"` from `@dnd-kit` while Edit and Remove
+sat inside it, which is ambiguous both to a screen reader and to a role query. A Playwright
+drag must therefore start from the handle's bounding box, not the card's.
 
 The signed-out `/api/auth/me` check answers 401 by design, and Chrome logs that as a failed
 resource. The console-error spec filters that one URL out rather than treating it as a bug.
@@ -157,7 +176,9 @@ Components expose stable test ids that both suites rely on. Do not rename them c
 - `aria-label="Card title"` and `aria-label="Card details"` on the card edit form
 - `data-testid="column-{columnId}"` on each column
 - `data-testid="card-{cardId}"` on each card
-- `aria-label="Column title"` on the column title input
+- `aria-label="Column title: {column title}"` on the column title input; both suites match
+  on the prefix, so scope the lookup to the column
+- `aria-label="Drag {card title}"` on each card's drag handle
 - `aria-label="Delete {card title}"` on each card's Remove button
 - `data-testid="chat-sidebar"` on the open chat panel
 - `data-testid="chat-open"` and `data-testid="chat-close"` on the panel's toggles

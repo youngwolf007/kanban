@@ -3,6 +3,12 @@ import userEvent from "@testing-library/user-event";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import { initialData, type BoardData } from "@/lib/kanban";
 
+/** Matches RENAME_SAVE_DELAY in KanbanBoard. */
+const RENAME_SAVE_DELAY = 500;
+
+const afterTheRenameDelay = () =>
+  new Promise((resolve) => setTimeout(resolve, RENAME_SAVE_DELAY * 2));
+
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
     status,
@@ -19,8 +25,9 @@ const renderBoard = async (board: BoardData = initialData) => {
     )
   );
   vi.stubGlobal("fetch", fetchMock);
-  render(<KanbanBoard />);
+  const view = render(<KanbanBoard />);
   await screen.findByTestId("column-col-backlog");
+  return view;
 };
 
 /** The body of the most recent PUT /api/board, as a board. */
@@ -202,7 +209,7 @@ describe("KanbanBoard", () => {
   describe("column rename", () => {
     it("updates the column immediately", async () => {
       await renderBoard();
-      const input = within(getFirstColumn()).getByLabelText("Column title");
+      const input = within(getFirstColumn()).getByLabelText(/^column title/i);
       await userEvent.clear(input);
       await userEvent.type(input, "New Name");
       expect(input).toHaveValue("New Name");
@@ -210,7 +217,7 @@ describe("KanbanBoard", () => {
 
     it("debounces typing into a single save", async () => {
       await renderBoard();
-      const input = within(getFirstColumn()).getByLabelText("Column title");
+      const input = within(getFirstColumn()).getByLabelText(/^column title/i);
 
       await userEvent.clear(input);
       await userEvent.type(input, "Renamed");
@@ -218,6 +225,65 @@ describe("KanbanBoard", () => {
 
       await waitFor(() => expect(savesMade()).toBe(1), { timeout: 2000 });
       expect(lastSavedBoard().columns[0].title).toBe("Renamed");
+    });
+
+    it("does not put back a change made while the rename was waiting", async () => {
+      await renderBoard();
+      await userEvent.type(
+        within(getFirstColumn()).getByLabelText(/^column title/i),
+        "!"
+      );
+
+      // Inside the debounce window. This saves at once, and the waiting rename must
+      // not follow it with the board as it was before the delete.
+      await userEvent.click(
+        screen.getByRole("button", { name: /delete align roadmap themes/i })
+      );
+      await waitFor(() => expect(savesMade()).toBe(1));
+      await afterTheRenameDelay();
+
+      expect(savesMade()).toBe(1);
+      expect(lastSavedBoard().cards["card-1"]).toBeUndefined();
+      expect(lastSavedBoard().columns[0].title).toBe("Backlog!");
+    });
+
+    it("saves a rename that was still waiting when the board unmounts", async () => {
+      const view = await renderBoard();
+      await userEvent.type(
+        within(getFirstColumn()).getByLabelText(/^column title/i),
+        "!"
+      );
+      expect(savesMade()).toBe(0);
+
+      view.unmount();
+
+      await waitFor(() => expect(savesMade()).toBe(1));
+      expect(lastSavedBoard().columns[0].title).toBe("Backlog!");
+    });
+
+    it("never saves a board with a blank column title", async () => {
+      await renderBoard();
+      const input = within(getFirstColumn()).getByLabelText(/^column title/i);
+      await userEvent.clear(input);
+      expect(input).toHaveValue("");
+
+      await userEvent.click(
+        screen.getByRole("button", { name: /delete align roadmap themes/i })
+      );
+
+      // The API refuses a blank title, and a board holding one could never be saved
+      // again, so the board keeps the last usable title.
+      await waitFor(() => expect(savesMade()).toBe(1));
+      expect(lastSavedBoard().columns[0].title).toBe("Backlog");
+    });
+
+    it("puts the title back when the field is left blank", async () => {
+      await renderBoard();
+      const input = within(getFirstColumn()).getByLabelText(/^column title/i);
+      await userEvent.clear(input);
+      await userEvent.tab();
+
+      expect(input).toHaveValue("Backlog");
     });
   });
 
@@ -255,6 +321,14 @@ describe("KanbanBoard", () => {
     );
 
     expect(within(column).getByText("No details yet.")).toBeInTheDocument();
+
+    // Shown, not stored: the AI never writes it, so storing it would make two
+    // identical empty cards read differently depending on which one created them.
+    await waitFor(() => expect(savesMade()).toBe(1));
+    const added = Object.values(lastSavedBoard().cards).find(
+      (card) => card.title === "No details card"
+    );
+    expect(added?.details).toBe("");
   });
 
   it("does not add a card when the title is only whitespace", async () => {
@@ -270,6 +344,16 @@ describe("KanbanBoard", () => {
 
     expect(within(column).getByText("2 cards")).toBeInTheDocument();
     expect(savesMade()).toBe(0);
+  });
+
+  it("puts the drag listeners on their own handle, not on the card", async () => {
+    await renderBoard();
+    const card = screen.getByTestId("card-card-1");
+
+    expect(card).not.toHaveAttribute("role", "button");
+    expect(
+      within(card).getByRole("button", { name: /^drag align roadmap themes/i })
+    ).toBeInTheDocument();
   });
 
   it("deletes only the card asked for", async () => {

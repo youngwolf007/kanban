@@ -47,8 +47,7 @@ test("deletes a card", async ({ page }) => {
   await signIn(page);
   const column = page.getByTestId("column-col-backlog");
   await expect(column.getByText("Align roadmap themes")).toBeVisible();
-  // Scoped to the card: dnd-kit gives the card article role="button" too, so an
-  // unscoped role lookup matches both the article and the Remove button.
+  // Scoped to the card, because every card has a Remove button.
   await page.getByTestId("card-card-1").getByRole("button", { name: /^delete/i }).click();
   await expect(column.getByText("Align roadmap themes")).toBeHidden();
 });
@@ -63,9 +62,12 @@ test("renames a column", async ({ page }) => {
 
 test("moves a card between columns", async ({ page }) => {
   await signIn(page);
-  const card = page.getByTestId("card-card-1");
+  // Dragging starts on the handle, which is the only element carrying the listeners.
+  const handle = page
+    .getByTestId("card-card-1")
+    .getByRole("button", { name: /^drag/i });
   const targetColumn = page.getByTestId("column-col-review");
-  const cardBox = await card.boundingBox();
+  const cardBox = await handle.boundingBox();
   const columnBox = await targetColumn.boundingBox();
   if (!cardBox || !columnBox) {
     throw new Error("Unable to resolve drag coordinates.");

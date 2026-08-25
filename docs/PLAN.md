@@ -589,3 +589,100 @@ That also fixed a real bug the squeeze exposed. `KanbanCard` had a flex row whos
 Edit and Remove buttons outside the card. `elementFromPoint` on the Remove button returned
 the column behind it, and the click never landed. That would have bitten at any narrow
 width, sidebar or not.
+
+## Part 11: Code review fixes
+
+`docs/code_review.md` reviewed the whole repository and found four defects worth proving
+rather than asserting. Each was reproduced with a throwaway probe first, then fixed with a
+regression test that fails against the code as it was.
+
+### A waiting rename overwrote whatever came after it
+
+The worst of the four, and the only one reachable by ordinary use. `applyChange(next, true)`
+scheduled a `PUT` of the board **as it was at that keystroke**. Anything done inside the
+500ms window saved at once, and the rename timer then fired with its older snapshot and put
+the board back. Nothing errored, because `PUT` is last write wins with no merge, and local
+state still held the newer board, so the loss was invisible until a reload.
+
+The probe renamed a column, added a card before the timer fired, then waited:
+
+```
+LAST SAVED column title: Renamed
+LAST SAVED contains 'Buy milk': false
+LAST SAVED card count: 8
+```
+
+The column on screen read "3 cards". The stored board had 8 and no "Buy milk".
+
+The existing debounce test renamed in isolation, so the window was never opened. The fix is
+that an immediate save cancels the waiting rename, which loses nothing because the newer
+snapshot derives from current state and already carries the rename. Unmount now flushes
+rather than drops, so renaming and signing out straight after keeps the name. A board from
+the AI drops it instead: that board is already stored, and saving the older snapshot would
+undo it.
+
+### Three ways the model could still reach an unhandled 500
+
+`chat.py` is built on the premise that the model cannot be trusted, and each of these was a
+path it did not cover.
+
+| Probe | Before | After |
+| --- | --- | --- |
+| `"board": [1,2,3]` | `AttributeError: 'list' object has no attribute 'get'`, a 500 | 502 |
+| A card reusing `card-1`'s id | `200 \| card-1 title now: Impostor` | 502 |
+| A completion with no `choices` | `IndexError: list index out of range` | `AIError`, so 503 |
+
+The duplicate id is the interesting one. `{card["id"]: card for card in ...}` collapsed
+duplicates silently, and the collapse happened **before** `BoardData` saw anything, so the
+invariants could not catch it. The result was a structurally valid board in which an
+existing card had been quietly replaced. The model is told at `chat.py` to give a new card
+an unused id, which is exactly the kind of instruction the Part 9 measurements show it
+follows unreliably.
+
+### The rest
+
+- An `AIError` broke out of the retry loop on first occurrence while an empty answer got
+  three attempts, even though both are fixed the same way: OpenRouter routes each attempt
+  afresh. It is now retried in the same loop, and 503 is raised only once `ATTEMPTS` are
+  exhausted.
+- The column title input was unconstrained, so clearing it put the board into a state the
+  API rejects with 422 and every later save failed too, with no way out but retyping.
+  `KanbanColumn` now keeps the text in a local draft and never hands a blank one up.
+- A failed sign out threw into nothing: no message, no cleared session, an unhandled
+  rejection, and a button that looked dead. It now returns to the login form either way.
+- Nothing bounded the chat message or the board, both of which reach a paid API on every
+  turn. `MAX_MESSAGE_LENGTH` bounds the message and each history entry;
+  `MAX_COLUMNS`, `MAX_CARDS`, `MAX_TITLE_LENGTH` and `MAX_DETAILS_LENGTH` bound the board.
+- The container signed session cookies with the fallback key published in `main.py`, because
+  compose never set one. The start scripts now generate a `SECRET_KEY` into `.env` on first
+  run and compose passes it through `env_file`. The fallback stays for tests and native runs.
+- The drag listeners moved off the card article onto their own handle. Carrying them there
+  gave the article `role="button"` from `@dnd-kit` while Edit and Remove sat inside it, which
+  is ambiguous to a screen reader and was already documented as a selector trap for both
+  test suites. The trap is gone; a Playwright drag now starts from the handle.
+- `"No details yet."` is a render-time fallback rather than stored data, so two identical
+  empty cards no longer read differently depending on whether the user or the AI made them.
+- Smaller ones: `Counter` for duplicate detection instead of a quadratic `count` in a
+  comprehension, a malformed password hash failing verification rather than raising, login
+  hashing against a dummy on the miss path so its timing does not reveal whether a username
+  exists, `min-w-0 break-words` on the drag preview to match the card, the column title
+  label naming its column, a `HEALTHCHECK` in the image, and one duplicate npm script gone.
+
+The container still runs as root. Switching it now would leave the existing `pm-data`
+volume, whose files are root-owned, unwritable by the app, and the only way out would be
+`docker compose down -v`, which destroys the board. It needs an entrypoint that fixes
+ownership before dropping privileges, and belongs with the `SECRET_KEY` work before this is
+exposed to a network.
+
+### Tooling
+
+`ruff` is now a dev dependency, configured in `backend/pyproject.toml` with `E`, `F`, `I`
+and `UP`. Bugbear's `B008` fires on every `Depends(...)` default, which is FastAPI's own
+idiom, so the default set costs more noise than it catches here. A GitHub Actions workflow
+runs both offline suites, `ruff`, `eslint` and `next build`. Playwright stays out of it:
+`chat.spec.ts` drives the real model, so it needs a key and takes minutes.
+
+Backend 95 offline (up from 81) plus 4 live, Vitest 59 (up from 53), Playwright 25, `ruff`
+and `eslint` clean, `next build` clean. Verified against a rebuilt container: the image
+builds, reports healthy through the new healthcheck, and all 25 Playwright specs pass
+against it.

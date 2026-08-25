@@ -38,10 +38,12 @@ test("an edited card keeps its edit after a reload", async ({ page }) => {
 
 test("a moved card stays in its new column after a reload", async ({ page }) => {
   await signIn(page);
-  const card = page.getByTestId("card-card-4");
+  const handle = page
+    .getByTestId("card-card-4")
+    .getByRole("button", { name: /^drag/i });
   const target = page.getByTestId("column-col-done");
 
-  const cardBox = await card.boundingBox();
+  const cardBox = await handle.boundingBox();
   const targetBox = await target.boundingBox();
   if (!cardBox || !targetBox) {
     throw new Error("Unable to resolve drag coordinates.");

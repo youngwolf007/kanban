@@ -111,6 +111,11 @@ cannot enforce them, so they are enforced in the application.
 4. Column ids are unique within the board.
 5. `title` is a non-empty string once trimmed. `details` may be empty.
 
+The board is also bounded: at most `MAX_COLUMNS` columns and `MAX_CARDS` cards, with titles
+up to `MAX_TITLE_LENGTH` and details up to `MAX_DETAILS_LENGTH`, all in `models.py`. The
+whole board is serialised into the AI prompt on every chat turn, so its size is an upstream
+cost as well as a storage question.
+
 Rule 1 matters most: it is the one that a bad AI response in Part 9 is most likely to break,
 and the one that would render cards invisible without erroring.
 
@@ -138,7 +143,7 @@ that user's board. Neither takes a board id; the session decides whose board it 
 | --- | --- |
 | 200 | Success |
 | 401 | Not signed in |
-| 422 | Body is not a valid board, by the invariants above |
+| 422 | Body is not a valid board, by the invariants and limits above |
 
 `PUT` **replaces the entire board**. There are no per-card or per-column endpoints.
 
@@ -202,10 +207,10 @@ and upgrade on read.
 
 ## Sign off
 
-Part 6 implements this. Confirm before it starts:
+Signed off before Part 6, which implements it:
 
-- [ ] JSON blob rather than normalized tables
-- [ ] One board per user, enforced by `UNIQUE` on `boards.user_id`
-- [ ] Whole-board `PUT` rather than granular endpoints, accepting last write wins
-- [ ] Card editing goes through the same `PUT`, with the UI arriving in Part 7
-- [ ] Lazy seeding on first `GET`, using the existing demo board
+- [x] JSON blob rather than normalized tables
+- [x] One board per user, enforced by `UNIQUE` on `boards.user_id`
+- [x] Whole-board `PUT` rather than granular endpoints, accepting last write wins
+- [x] Card editing goes through the same `PUT`, with the UI arriving in Part 7
+- [x] Lazy seeding on first `GET`, using the existing demo board

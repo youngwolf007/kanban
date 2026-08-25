@@ -17,7 +17,9 @@ export const App = () => {
   }, []);
 
   const handleSignOut = async () => {
-    await logout();
+    // Clear the local session either way. If the request failed there is nothing the
+    // user can do about it here, and leaving them on the board looks like a dead button.
+    await logout().catch(() => {});
     setSession(null);
   };
 

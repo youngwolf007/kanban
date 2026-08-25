@@ -98,6 +98,12 @@ class TestFailures:
         with pytest.raises(AIError, match="OPENROUTER_API_KEY is not set"):
             ask(QUESTION)
 
+    def test_no_choices_at_all_becomes_an_ai_error(self, openai_class):
+        """An IndexError here would escape every handler the chat route has."""
+        openai_class.return_value.chat.completions.create.return_value.choices = []
+        with pytest.raises(AIError, match="returned no answer"):
+            ask(QUESTION)
+
     def test_an_upstream_failure_becomes_an_ai_error(self, openai_class):
         openai_class.return_value.chat.completions.create.side_effect = APIError(
             "upstream exploded", MagicMock(), body=None

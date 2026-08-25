@@ -3,7 +3,7 @@ import sqlite3
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field
 
 from app.ai import AIError, ask
 from app.auth import require_user
@@ -15,6 +15,10 @@ router = APIRouter(prefix="/api", tags=["chat"])
 
 # Keeps the prompt bounded. The client sends its whole transcript; only the tail is used.
 MAX_HISTORY = 20
+
+# Longer than this is not a kanban instruction, and every character is paid for
+# upstream. The cap applies to the history too, which the client also supplies.
+MAX_MESSAGE_LENGTH = 4000
 
 # gpt-oss is a reasoning model, and roughly one call in ten finishes with its answer left in
 # the reasoning channel and no content at all, despite finish_reason "stop". Each attempt is
@@ -102,11 +106,11 @@ The current board:
 
 class Message(BaseModel):
     role: Literal["user", "assistant"]
-    content: str
+    content: str = Field(max_length=MAX_MESSAGE_LENGTH)
 
 
 class ChatRequest(BaseModel):
-    message: str
+    message: str = Field(max_length=MAX_MESSAGE_LENGTH)
     history: list[Message] = []
 
 
@@ -123,38 +127,56 @@ def to_model_shape(board: BoardData) -> dict:
     return {"columns": data["columns"], "cards": list(data["cards"].values())}
 
 
-def to_stored_shape(board: dict) -> dict:
-    """The model's board, with its cards keyed by id ready for BoardData."""
-    return {
-        "columns": board.get("columns", []),
-        "cards": {card["id"]: card for card in board.get("cards", [])},
-    }
+def to_stored_shape(board: object) -> dict:
+    """The model's board, with its cards keyed by id ready for BoardData.
+
+    Raises ValueError for the two things BoardData cannot judge for itself: a board
+    that is not an object at all, and two cards sharing an id, which would collapse
+    into one on the way into the map and leave a valid board missing a card.
+    """
+    if not isinstance(board, dict):
+        raise ValueError("board is not an object")
+
+    cards: dict[str, object] = {}
+    for card in board.get("cards", []):
+        card_id = card["id"]
+        if card_id in cards:
+            raise ValueError(f"card id used more than once: {card_id}")
+        cards[card_id] = card
+
+    return {"columns": board.get("columns", []), "cards": cards}
 
 
 def ask_for_json(messages: list[dict]) -> dict:
-    """One structured answer from the model, retried once if it comes back unusable."""
-    detail = "The AI returned a malformed response"
+    """One structured answer from the model, retried up to ATTEMPTS times.
+
+    Every failure here is worth another attempt, because OpenRouter routes each one
+    afresh: an unusable answer and a provider that timed out are both usually fixed
+    by landing somewhere else. The status of the last failure is what the caller sees.
+    """
+    status, detail = 502, "The AI returned a malformed response"
     for _ in range(ATTEMPTS):
         try:
             answer = ask(messages, response_format=RESPONSE_SCHEMA)
         except AIError as error:
-            raise HTTPException(status_code=503, detail=str(error)) from error
+            status, detail = 503, str(error)
+            continue
 
         try:
             data = json.loads(answer)
         except json.JSONDecodeError:
-            detail = "The AI returned a malformed response"
+            status, detail = 502, "The AI returned a malformed response"
             continue
 
         # Providers vary on whether they honour the schema's required keys, so check for
         # something usable rather than assuming either key is present.
         if not isinstance(data, dict) or not (data.get("reply") or data.get("board")):
-            detail = "The AI returned an empty response"
+            status, detail = 502, "The AI returned an empty response"
             continue
 
         return data
 
-    raise HTTPException(status_code=502, detail=detail)
+    raise HTTPException(status_code=status, detail=detail)
 
 
 @router.post("/chat")
@@ -176,7 +198,8 @@ def chat(
 
     try:
         updated = BoardData.model_validate(to_stored_shape(returned))
-    except (ValidationError, KeyError, TypeError) as error:
+    except (ValueError, KeyError, TypeError) as error:
+        # ValueError covers both pydantic's ValidationError and the shaping above.
         raise HTTPException(
             status_code=502, detail="The AI returned an invalid board"
         ) from error

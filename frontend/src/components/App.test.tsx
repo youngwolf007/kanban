@@ -131,6 +131,17 @@ describe("App", () => {
     });
   });
 
+  it("returns to the login form even when signing out fails", async () => {
+    const fetchMock = mockFetch({ status: 200, body: { username: "user" } });
+
+    render(<App />);
+    const signOut = await screen.findByRole("button", { name: /sign out/i });
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(500, {})));
+    await userEvent.click(signOut);
+
+    expect(await screen.findByLabelText(/username/i)).toBeInTheDocument();
+  });
+
   it("shows the signed in username on the board", async () => {
     mockFetch({ status: 200, body: { username: "user" } });
 

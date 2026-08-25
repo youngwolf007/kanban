@@ -4,7 +4,7 @@ import os
 import secrets
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent.parent
@@ -54,7 +54,9 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password: str, stored: str) -> bool:
-    salt, digest = stored.split("$")
+    salt, _, digest = stored.partition("$")
+    if not digest:
+        return False
     candidate = hashlib.scrypt(
         password.encode(), salt=salt.encode(), n=16384, r=8, p=1
     )
@@ -82,9 +84,12 @@ def create_user(username: str, password: str) -> int:
             (
                 username,
                 hash_password(password),
-                datetime.now(timezone.utc).isoformat(),
+                datetime.now(UTC).isoformat(),
             ),
         )
+        # An INSERT into a rowid table always sets this; the type is Optional because
+        # other statements do not.
+        assert cursor.lastrowid is not None
         return cursor.lastrowid
 
 
@@ -106,7 +111,7 @@ def save_board(user_id: int, board: dict) -> None:
             ON CONFLICT(user_id) DO UPDATE SET data = excluded.data,
                                                updated_at = excluded.updated_at
             """,
-            (user_id, json.dumps(board), datetime.now(timezone.utc).isoformat()),
+            (user_id, json.dumps(board), datetime.now(UTC).isoformat()),
         )
 
 

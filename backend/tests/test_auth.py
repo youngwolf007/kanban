@@ -97,6 +97,11 @@ class TestPasswordHashing:
     def test_the_same_password_hashes_differently_each_time(self):
         assert hash_password("same") != hash_password("same")
 
+    def test_a_malformed_hash_does_not_verify(self):
+        """A row without the salt separator is a failed sign in, not a 500."""
+        assert not verify_password("hunter2", "no-separator-here")
+        assert not verify_password("hunter2", "")
+
 
 class TestSeeding:
     def test_the_default_user_is_created(self, client):

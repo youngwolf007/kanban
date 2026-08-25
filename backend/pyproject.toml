@@ -14,6 +14,7 @@ dependencies = [
 dev = [
     "pytest",
     "httpx2",
+    "ruff>=0.16.4",
 ]
 
 [tool.uv]
@@ -26,3 +27,12 @@ pythonpath = ["."]
 # Run them with: uv run pytest -m live
 markers = ["live: calls OpenRouter for real; needs OPENROUTER_API_KEY"]
 addopts = "-m 'not live'"
+
+[tool.ruff]
+line-length = 95
+
+[tool.ruff.lint]
+# E, F and I are the substance: real errors, unused names, and import order. Bugbear's
+# B008 fires on every `Depends(...)` default, which is FastAPI's own idiom, so the rest
+# of the default set costs more noise than it catches here.
+select = ["E", "F", "I", "UP"]

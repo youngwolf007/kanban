@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import clsx from "clsx";
-import type { Card } from "@/lib/kanban";
+import { NO_DETAILS, type Card } from "@/lib/kanban";
 
 type KanbanCardProps = {
   card: Card;
@@ -13,8 +13,15 @@ type KanbanCardProps = {
 export const KanbanCard = ({ card, onDelete, onEdit }: KanbanCardProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState({ title: card.title, details: card.details });
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: card.id, disabled: isEditing });
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: card.id, disabled: isEditing });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -92,11 +99,29 @@ export const KanbanCard = ({ card, onDelete, onEdit }: KanbanCardProps) => {
         "transition-all duration-150",
         isDragging && "opacity-60 shadow-[0_18px_32px_rgba(3,33,71,0.16)]"
       )}
-      {...attributes}
-      {...listeners}
       data-testid={`card-${card.id}`}
     >
       <div className="flex items-start justify-between gap-3">
+        {/* The drag listeners live on their own control. Carrying them on the article
+            gave it role="button" from dnd-kit while Edit and Remove sat inside it,
+            which is ambiguous to a screen reader and to any role query. */}
+        <button
+          type="button"
+          ref={setActivatorNodeRef}
+          {...attributes}
+          {...listeners}
+          aria-label={`Drag ${card.title}`}
+          className="mt-1 shrink-0 cursor-grab touch-none rounded-md p-1 text-[var(--gray-text)] transition hover:text-[var(--navy-dark)]"
+        >
+          <svg aria-hidden="true" viewBox="0 0 10 16" className="h-4 w-3 fill-current">
+            <circle cx="3" cy="3" r="1.3" />
+            <circle cx="7" cy="3" r="1.3" />
+            <circle cx="3" cy="8" r="1.3" />
+            <circle cx="7" cy="8" r="1.3" />
+            <circle cx="3" cy="13" r="1.3" />
+            <circle cx="7" cy="13" r="1.3" />
+          </svg>
+        </button>
         {/* min-w-0 or this refuses to shrink past its longest word, pushing the
             shrink-0 buttons outside the card once the column gets narrow. */}
         <div className="min-w-0 break-words">
@@ -104,7 +129,7 @@ export const KanbanCard = ({ card, onDelete, onEdit }: KanbanCardProps) => {
             {card.title}
           </h4>
           <p className="mt-2 text-sm leading-6 text-[var(--gray-text)]">
-            {card.details}
+            {card.details || NO_DETAILS}
           </p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">

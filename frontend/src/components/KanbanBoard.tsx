@@ -29,6 +29,7 @@ export const KanbanBoard = ({ username, onSignOut }: KanbanBoardProps = {}) => {
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const renameTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingRename = useRef<BoardData | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -47,6 +48,11 @@ export const KanbanBoard = ({ username, onSignOut }: KanbanBoardProps = {}) => {
       if (renameTimer.current) {
         clearTimeout(renameTimer.current);
       }
+      // Flush rather than drop: renaming a column and immediately signing out
+      // would otherwise lose the rename.
+      if (pendingRename.current) {
+        saveBoard(pendingRename.current).catch(() => {});
+      }
     },
     []
   );
@@ -60,15 +66,25 @@ export const KanbanBoard = ({ username, onSignOut }: KanbanBoardProps = {}) => {
     }
   }, []);
 
+  const cancelPendingRename = useCallback(() => {
+    if (renameTimer.current) {
+      clearTimeout(renameTimer.current);
+      renameTimer.current = null;
+    }
+    pendingRename.current = null;
+  }, []);
+
   // Renaming fires on every keystroke, so its save waits for typing to stop.
   const persistAfterTyping = useCallback(
     (next: BoardData) => {
-      if (renameTimer.current) {
-        clearTimeout(renameTimer.current);
-      }
-      renameTimer.current = setTimeout(() => persist(next), RENAME_SAVE_DELAY);
+      cancelPendingRename();
+      pendingRename.current = next;
+      renameTimer.current = setTimeout(() => {
+        pendingRename.current = null;
+        persist(next);
+      }, RENAME_SAVE_DELAY);
     },
-    [persist]
+    [cancelPendingRename, persist]
   );
 
   const applyChange = useCallback(
@@ -76,11 +92,25 @@ export const KanbanBoard = ({ username, onSignOut }: KanbanBoardProps = {}) => {
       setBoard(next);
       if (debounced) {
         persistAfterTyping(next);
-      } else {
-        persist(next);
+        return;
       }
+      // `next` derives from current state, so it already carries any rename still
+      // waiting. Letting that older snapshot save would put this change back.
+      cancelPendingRename();
+      persist(next);
     },
-    [persist, persistAfterTyping]
+    [cancelPendingRename, persist, persistAfterTyping]
+  );
+
+  const adoptBoardFromAi = useCallback(
+    (next: BoardData) => {
+      // The AI wrote through the backend, so its board is already stored. A rename
+      // still waiting is dropped, not flushed: saving that older board would undo
+      // the change the AI just made.
+      cancelPendingRename();
+      setBoard(next);
+    },
+    [cancelPendingRename]
   );
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -126,7 +156,7 @@ export const KanbanBoard = ({ username, onSignOut }: KanbanBoardProps = {}) => {
       ...board,
       cards: {
         ...board.cards,
-        [id]: { id, title, details: details || "No details yet." },
+        [id]: { id, title, details },
       },
       columns: board.columns.map((column) =>
         column.id === columnId
@@ -161,7 +191,7 @@ export const KanbanBoard = ({ username, onSignOut }: KanbanBoardProps = {}) => {
       ...board,
       cards: {
         ...board.cards,
-        [cardId]: { id: cardId, title, details: details || "No details yet." },
+        [cardId]: { id: cardId, title, details },
       },
     });
   };
@@ -281,9 +311,7 @@ export const KanbanBoard = ({ username, onSignOut }: KanbanBoardProps = {}) => {
         </DndContext>
       </main>
 
-      {/* The AI writes through the backend, so its board is already stored: adopt it
-          as is rather than saving it again. */}
-      <ChatSidebar onBoardChange={setBoard} />
+      <ChatSidebar onBoardChange={adoptBoardFromAi} />
     </div>
   );
 };

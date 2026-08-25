@@ -25,6 +25,11 @@ container while leaving the `pm-data` volume, so the database survives a restart
 
 - Each script changes to the project root first, so they work from any directory
 - `start` fails early with a clear message if `.env` is missing from the project root
+- `start` generates a random `SECRET_KEY` into `.env` when there is not one already, and
+  compose passes it to the container through `env_file`. Without it the container would sign
+  session cookies with the fallback in `backend/app/main.py`, which is published in the
+  source, so anyone who had read the repository could forge a session. It is written once
+  and kept, so a restart does not sign everyone out
 - Shell scripts use `set -euo pipefail`; PowerShell scripts use
   `$ErrorActionPreference = "Stop"` and check `$LASTEXITCODE` after `docker compose`,
   because a native command's non-zero exit does not trigger PowerShell's error handling

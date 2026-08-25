@@ -15,6 +15,13 @@ export type BoardData = {
   cards: Record<string, Card>;
 };
 
+/**
+ * Shown for a card with no details. A fallback at render time, never written into
+ * the board: the AI does not apply it, so storing it would make two identical empty
+ * cards read differently depending on which one created them.
+ */
+export const NO_DETAILS = "No details yet.";
+
 export const initialData: BoardData = {
   columns: [
     { id: "col-backlog", title: "Backlog", cardIds: ["card-1", "card-2"] },

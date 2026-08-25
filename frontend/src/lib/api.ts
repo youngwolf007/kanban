@@ -48,6 +48,32 @@ export const getBoard = async (): Promise<BoardData> => {
   return response.json();
 };
 
+export type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+export type ChatReply = {
+  reply: string;
+  /** Set only when the AI changed the board. The backend has already stored it. */
+  board: BoardData | null;
+};
+
+export const sendChat = async (
+  message: string,
+  history: ChatMessage[]
+): Promise<ChatReply> => {
+  const response = await fetch("/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, history }),
+  });
+  if (!response.ok) {
+    throw new Error("The assistant could not answer.");
+  }
+  return response.json();
+};
+
 export const saveBoard = async (board: BoardData): Promise<BoardData> => {
   const response = await fetch("/api/board", {
     method: "PUT",

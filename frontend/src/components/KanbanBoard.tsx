@@ -11,6 +11,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { ChatSidebar } from "@/components/ChatSidebar";
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
 import { getBoard, saveBoard } from "@/lib/api";
@@ -279,6 +280,10 @@ export const KanbanBoard = ({ username, onSignOut }: KanbanBoardProps = {}) => {
           </DragOverlay>
         </DndContext>
       </main>
+
+      {/* The AI writes through the backend, so its board is already stored: adopt it
+          as is rather than saving it again. */}
+      <ChatSidebar onBoardChange={setBoard} />
     </div>
   );
 };

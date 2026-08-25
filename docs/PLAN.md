@@ -85,6 +85,9 @@ this plan would otherwise have to reverse engineer from the code.
 | 9 | `max_retries=0` on the OpenAI client | The SDK's default of 2 multiplied with the route's own retry: six upstream calls at 30s each. Retrying belongs where the answer can be judged |
 | 9 | An unusable AI answer is a 502, never a partial write | The board is replaced whole or not at all. `BoardData` validates the model's board exactly as `PUT /api/board` validates the client's |
 | 9 | A returned board comes back in the response, not just a flag | Part 10 can render the new board straight from the chat reply with no second fetch |
+| 10 | The chat panel overlays the board and starts closed | Five columns need the full width. Sharing the row squeezed cards until one measured 1698px tall, and broke dragging outright |
+| 10 | A board from the chat is adopted, never re-saved | `POST /api/chat` already persisted it, so a `PUT` would rewrite bytes that just arrived and risk clobbering a concurrent edit |
+| 10 | `ChatSidebar` owns the conversation, `KanbanBoard` owns the board | The transcript is of no interest to the board, and this keeps the board's state in one place as before |
 
 ### Known gotchas
 
@@ -528,29 +531,61 @@ the stored board untouched, never a partial write.
 Goal: a chat sidebar in the UI that drives the board through the AI, refreshing the board
 automatically when the AI changes it.
 
-- [ ] Build the sidebar chat component using the project palette
-- [ ] Lay out the board and sidebar so the board stays usable alongside the chat
-- [ ] Render the message history with distinct user and assistant styling
-- [ ] Show a pending state while the AI is responding
-- [ ] Send the message and history to `POST /api/chat`
-- [ ] Refresh the board automatically when the response carries a board update
-- [ ] Show a clear error if the chat request fails
-- [ ] Allow the sidebar to be collapsed and reopened
-- [ ] Keep the layout usable at narrow widths
+- [x] Build the sidebar chat component using the project palette
+- [x] Lay out the board and sidebar so the board stays usable alongside the chat
+- [x] Render the message history with distinct user and assistant styling
+- [x] Show a pending state while the AI is responding
+- [x] Send the message and history to `POST /api/chat`
+- [x] Refresh the board automatically when the response carries a board update
+- [x] Show a clear error if the chat request fails
+- [x] Allow the sidebar to be collapsed and reopened
+- [x] Keep the layout usable at narrow widths
 
 Tests:
-- [ ] Vitest: the sidebar renders, sends a message, and displays the reply
-- [ ] Vitest: a response with a board update refreshes the displayed board
-- [ ] Vitest: a response with no board update leaves the board untouched
-- [ ] Vitest: the pending state shows while a request is in flight and clears afterwards
-- [ ] Vitest: a failed request shows an error
-- [ ] Vitest: the sidebar collapses and reopens
-- [ ] Playwright: ask the AI to add a card, and it appears on the board without a manual reload
-- [ ] Playwright: the added card is still there after a reload
-- [ ] Playwright: a plain question gets a reply and leaves the board unchanged
+- [x] Vitest: the sidebar renders, sends a message, and displays the reply
+- [x] Vitest: a response with a board update refreshes the displayed board
+- [x] Vitest: a response with no board update leaves the board untouched
+- [x] Vitest: the pending state shows while a request is in flight and clears afterwards
+- [x] Vitest: a failed request shows an error
+- [x] Vitest: the sidebar collapses and reopens
+- [x] Playwright: ask the AI to add a card, and it appears on the board without a manual reload
+- [x] Playwright: the added card is still there after a reload
+- [x] Playwright: a plain question gets a reply and leaves the board unchanged
 
 Success criteria:
-- A user can hold a conversation in the sidebar and see the board update itself.
-- The board never needs a manual refresh after an AI change.
-- The whole suite passes: backend `pytest`, frontend `npm run test:unit`, and `npm run test:e2e`.
-- The finished app builds and runs from `scripts/start.sh` or `scripts/start.ps1` alone.
+- [x] A user can hold a conversation in the sidebar and see the board update itself.
+- [x] The board never needs a manual refresh after an AI change.
+- [x] The whole suite passes: backend `pytest`, frontend `npm run test:unit`, and `npm run test:e2e`.
+- [x] The finished app builds and runs from `scripts/start.sh` or `scripts/start.ps1` alone.
+
+Backend 81 offline plus 4 live, Vitest 53 (up from 38), Playwright 25 (up from 21), eslint
+clean. Verified from a stopped state: `scripts/stop.ps1` then `scripts/start.ps1` alone
+builds the image and serves a working app on port 8000.
+
+The chat lives in `ChatSidebar`, which owns the conversation while `KanbanBoard` keeps
+owning the board. A reply that carries a board is adopted with `setBoard` and deliberately
+not saved again: the backend already stored it, so a `PUT` would be a pointless second write
+of bytes that just arrived. A Vitest case asserts no save is made.
+
+### The sidebar overlays the board, and starts closed
+
+The first attempt put the sidebar in the flex row beside the board. Two end-to-end drag
+tests started failing, and the measurements showed why the layout, not the tests, was wrong.
+
+At a 1280px viewport a 380px panel leaves 848px for five columns, or 146px each. At that
+width a card's text column is about 37px wide, so its text wraps to a few characters a line:
+one card measured **1698px tall** and its column **3532px**. The card being dragged sat at
+y=1450, far below the 720px viewport, which no scripted drag can reach. A user could not
+have used it either.
+
+Widening the columns to a readable 240px needs about 1300px for five, which is more than the
+viewport has, so a horizontally scrolling board cannot show Backlog and Review at once and
+the drag has nothing to aim at. There is no arrangement at this width where a 380px panel
+and five usable columns coexist. So the panel overlays the board, and starts closed: the
+board is unobstructed by default, and the chat is one click away over the top of it.
+
+That also fixed a real bug the squeeze exposed. `KanbanCard` had a flex row whose text
+`div` lacked `min-w-0`, so it refused to shrink below its content and pushed the card's
+Edit and Remove buttons outside the card. `elementFromPoint` on the Remove button returned
+the column behind it, and the click never landed. That would have bitten at any narrow
+width, sidebar or not.

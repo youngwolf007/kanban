@@ -23,19 +23,21 @@ src/
     App.tsx                session gate: loading, login form, or board
     LoginForm.tsx          username and password form, calls the auth API
     KanbanBoard.tsx        owns all board state and every mutation handler
+    ChatSidebar.tsx        the AI chat panel, overlaid on the board
     KanbanColumn.tsx       one column, droppable, holds the sortable card list
     KanbanCard.tsx         one sortable card, with a Remove button
     KanbanCardPreview.tsx  non-interactive card rendered inside the DragOverlay
     NewCardForm.tsx        collapsed "Add a card" button expanding to a title/details form
   lib/
     kanban.ts      types, seed data, the moveCard reducer, createId
-    api.ts         fetch wrappers for the auth and board APIs
+    api.ts         fetch wrappers for the auth, board, and chat APIs
   test/
     setup.ts       jest-dom matchers
 tests/
   helpers.ts         DEMO_BOARD, signIn, resetBoard, startFresh
   kanban.spec.ts     Playwright board specs
   auth.spec.ts       Playwright sign in, sign out, and session specs
+  chat.spec.ts       Playwright AI chat specs, which call the real model
   persistence.spec.ts  Playwright specs that reload and check the board survived
 ```
 
@@ -80,8 +82,14 @@ A failed save sets an error shown in the header and cleared by the next successf
 - `handleDragEnd` delegates to `moveCard` in `lib/kanban.ts`
 - `handleRenameColumn`, `handleAddCard`, and `handleDeleteCard` update `board` directly
 
-There is no card edit handler. The demo can add and delete cards but not change one. Part 7
-adds editing.
+`handleEditCard` updates a card's title and details in place, added in Part 7. Editing goes
+through the same whole-board `PUT` as every other change.
+
+`ChatSidebar` owns the conversation: the messages, the draft, the pending flag, its own
+error, and whether it is open. `KanbanBoard` passes it one callback, `onBoardChange`. When a
+reply carries a board the sidebar hands it over and `KanbanBoard` adopts it with `setBoard`
+**without saving it**: `POST /api/chat` already stored it, so saving would rewrite bytes that
+had just arrived.
 
 `moveCard(columns, activeId, overId)` is a pure function covering three cases: reorder
 within a column, move to a specific position in another column, and drop onto a column
@@ -151,14 +159,30 @@ Components expose stable test ids that both suites rely on. Do not rename them c
 - `data-testid="card-{cardId}"` on each card
 - `aria-label="Column title"` on the column title input
 - `aria-label="Delete {card title}"` on each card's Remove button
+- `data-testid="chat-sidebar"` on the open chat panel
+- `data-testid="chat-open"` and `data-testid="chat-close"` on the panel's toggles
+- `data-testid="chat-user"` and `data-testid="chat-assistant"` on message bubbles
+- `data-testid="chat-pending"` while a reply is in flight, `chat-error` when one fails
+- `aria-label="Message the assistant"` on the chat composer
+
+## The chat panel
+
+`ChatSidebar` is **overlaid on the board and starts closed**, which is a deliberate layout
+decision rather than a default worth flipping.
+
+Five columns need the whole width. When the panel sat in the flex row beside the board, a
+1280px viewport left 848px for five columns, or 146px each, and a card's text column came
+out about 37px wide. Text then wrapped to a few characters a line: one card measured 1698px
+tall, its column 3532px, and dragging broke because the card sat far below the viewport.
+Widening the columns to a readable 240px needs roughly 1300px for five, more than the
+viewport has. There is no arrangement at this width where the panel and five usable columns
+coexist, so the panel floats above the board and the user opens it when they want it.
+
+If you ever move it back into the flow, re-run the two drag specs. They are what caught it.
 
 ## Planned changes
 
-Tracked in `docs/PLAN.md`. In short:
-
-- Part 10: an AI chat sidebar that refreshes the board when the AI changes it
-
-The app stays on a single route at `/`. Login and board are chosen from client state rather
+Every part of `docs/PLAN.md` is complete. The app stays on a single route at `/`. Login and board are chosen from client state rather
 than separate pages, which keeps the static export simple.
 
 ## Conventions

@@ -97,7 +97,9 @@ export const KanbanCard = ({ card, onDelete, onEdit }: KanbanCardProps) => {
       data-testid={`card-${card.id}`}
     >
       <div className="flex items-start justify-between gap-3">
-        <div>
+        {/* min-w-0 or this refuses to shrink past its longest word, pushing the
+            shrink-0 buttons outside the card once the column gets narrow. */}
+        <div className="min-w-0 break-words">
           <h4 className="font-display text-base font-semibold text-[var(--navy-dark)]">
             {card.title}
           </h4>

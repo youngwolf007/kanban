@@ -282,4 +282,70 @@ describe("KanbanBoard", () => {
     expect(within(column).queryByText("Align roadmap themes")).not.toBeInTheDocument();
     expect(within(column).getByText("Gather customer signals")).toBeInTheDocument();
   });
+
+  describe("ai chat", () => {
+    const withCard: BoardData = {
+      ...initialData,
+      columns: initialData.columns.map((column, index) =>
+        index === 0
+          ? { ...column, cardIds: [...column.cardIds, "card-9"] }
+          : column
+      ),
+      cards: {
+        ...initialData.cards,
+        "card-9": { id: "card-9", title: "Buy milk", details: "From the shop" },
+      },
+    };
+
+    /** Mocked by URL, not by call order: the board is fetched on mount. */
+    const renderWithChat = async (reply: string, board: BoardData | null) => {
+      fetchMock = vi.fn((input: unknown, init?: RequestInit) => {
+        if (String(input) === "/api/chat") {
+          return Promise.resolve(jsonResponse(200, { reply, board }));
+        }
+        if (init?.method === "PUT") {
+          return Promise.resolve(jsonResponse(200, JSON.parse(init.body as string)));
+        }
+        return Promise.resolve(jsonResponse(200, initialData));
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      render(<KanbanBoard />);
+      await screen.findByTestId("column-col-backlog");
+    };
+
+    /** The chat panel starts closed, so open it before asking anything. */
+    const ask = async (text: string) => {
+      await userEvent.click(screen.getByTestId("chat-open"));
+      await userEvent.type(screen.getByLabelText("Message the assistant"), text);
+      await userEvent.click(screen.getByRole("button", { name: "Send" }));
+    };
+
+    it("shows the board the assistant returned", async () => {
+      await renderWithChat("Added it.", withCard);
+
+      await ask("Add a card called Buy milk");
+
+      expect(await screen.findByText("Buy milk")).toBeInTheDocument();
+      expect(within(getFirstColumn()).getByText("3 cards")).toBeInTheDocument();
+    });
+
+    it("does not save a board the assistant already stored", async () => {
+      await renderWithChat("Added it.", withCard);
+
+      await ask("Add a card called Buy milk");
+
+      await screen.findByText("Buy milk");
+      expect(savesMade()).toBe(0);
+    });
+
+    it("leaves the board alone when the assistant changed nothing", async () => {
+      await renderWithChat("There are eight cards.", null);
+
+      await ask("How many cards?");
+
+      expect(await screen.findByTestId("chat-assistant")).toBeInTheDocument();
+      expect(screen.queryByText("Buy milk")).not.toBeInTheDocument();
+      expect(within(getFirstColumn()).getByText("2 cards")).toBeInTheDocument();
+    });
+  });
 });

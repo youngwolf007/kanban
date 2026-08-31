@@ -1,9 +1,6 @@
 # Database
 
-SQLite, one file, created on first run. Two tables: `users`, which exists as of Part 4, and
-`boards`, proposed here and implemented in Part 6.
-
-This document needs sign off before Part 6 starts.
+SQLite, one file, created on first run. Two tables: `users` and `boards`.
 
 ## Approach
 
@@ -14,9 +11,10 @@ Reasons, in order of weight:
 
 1. The frontend already holds the whole board as a single `BoardData` object. Storing that
    shape verbatim means no mapping layer in either direction.
-2. Part 9 sends the entire board to the AI and takes an entire board back. With a JSON
-   column that round trip is a read, a validate, and a write. Normalized tables would need
-   a diffing layer to turn the model's answer into row inserts, updates, and deletes.
+2. The AI chat route sends the entire board to the model and takes an entire board back.
+   With a JSON column that round trip is a read, a validate, and a write. Normalized tables
+   would need a diffing layer to turn the model's answer into row inserts, updates, and
+   deletes.
 3. The MVP has one board per user and no queries that look inside a board. Nothing asks
    "which cards are in progress across all users", so the indexing that normalization buys
    would go unused.
@@ -49,7 +47,7 @@ CREATE TABLE IF NOT EXISTS boards (
 | `boards.data` | The board JSON, serialised with `json.dumps` |
 | `boards.updated_at` | ISO 8601 UTC, same format as `users.created_at` |
 
-`users` is unchanged from Part 4 and is repeated here only so the schema reads as a whole.
+`users` is repeated here only so the schema reads as a whole.
 
 ## Board JSON
 
@@ -116,8 +114,8 @@ up to `MAX_TITLE_LENGTH` and details up to `MAX_DETAILS_LENGTH`, all in `models.
 whole board is serialised into the AI prompt on every chat turn, so its size is an upstream
 cost as well as a storage question.
 
-Rule 1 matters most: it is the one that a bad AI response in Part 9 is most likely to break,
-and the one that would render cards invisible without erroring.
+Rule 1 matters most: it is the one that a bad AI response is most likely to break, and the
+one that would render cards invisible without erroring.
 
 ## Seeding
 
@@ -126,8 +124,7 @@ A user has no `boards` row until their board is first requested. On the first
 frontend ships as `initialData`: five columns (Backlog, Discovery, In Progress, Review,
 Done) and eight cards.
 
-That keeps seeding lazy, so adding a user never needs a matching board write, and it means
-the demo content the user already saw in Part 3 is what they get on first sign in.
+That keeps seeding lazy, so adding a user never needs a matching board write.
 
 ## API contract
 
@@ -147,19 +144,16 @@ that user's board. Neither takes a board id; the session decides whose board it 
 
 `PUT` **replaces the entire board**. There are no per-card or per-column endpoints.
 
-Rationale: the storage is a single document, the AI in Part 9 returns a whole board, and the
-frontend already holds the whole board in memory. One replace endpoint serves all three.
-Granular endpoints would mean more routes, more tests, and a diffing layer, for an app whose
-boards are a few kilobytes.
+Rationale: the storage is a single document, the AI returns a whole board, and the frontend
+already holds the whole board in memory. One replace endpoint serves all three. Granular
+endpoints would mean more routes, more tests, and a diffing layer, for an app whose boards
+are a few kilobytes.
 
 ### Card editing
 
 Editing a card is not a separate endpoint. The client changes `cards[id].title` or
 `cards[id].details` in the board it holds and `PUT`s the whole board, exactly as it does for
 a move, a rename, an add, or a delete.
-
-This is the contract Part 7 implements in the UI. Part 4's board has no card edit control at
-all; Part 7 adds one and routes it through this same `PUT`.
 
 ## Concurrency
 
@@ -173,9 +167,9 @@ The upgrade path, if it is ever needed, is to return `updated_at` from `GET`, re
 `PUT`, and answer 409 when it no longer matches. That is deliberately **not** being built
 now.
 
-There is one case worth watching in Part 10: an AI chat request and a user's drag can be in
-flight at once, and whichever lands second wins. Part 10 refreshes the board from the
-response, which keeps the UI honest about what was actually stored.
+One case worth watching: an AI chat request and a user's drag can be in flight at once, and
+whichever lands second wins. The client refreshes its board from the chat response, which
+keeps the UI honest about what was actually stored.
 
 ## Storage and persistence
 
@@ -188,8 +182,7 @@ In Docker, `/data` is the `pm-data` named volume declared in `docker-compose.yml
 a bind mount, so it lives inside Docker rather than in the project directory.
 
 `scripts/stop.sh` runs `docker compose down`, which removes the container but keeps the
-volume, so the board survives a stop and start. This was verified in Part 2 by writing a
-file to `/data` and reading it back after a full restart.
+volume, so the board survives a stop and start.
 
 To reset everything, remove the volume with `docker compose down -v`. The next start
 recreates the database, the seeded user, and a fresh demo board.
@@ -205,12 +198,3 @@ old shape. While the app is pre-release, the answer is to delete the volume and 
 the shape ever needs to change against data worth keeping, add a `version` key to the JSON
 and upgrade on read.
 
-## Sign off
-
-Signed off before Part 6, which implements it:
-
-- [x] JSON blob rather than normalized tables
-- [x] One board per user, enforced by `UNIQUE` on `boards.user_id`
-- [x] Whole-board `PUT` rather than granular endpoints, accepting last write wins
-- [x] Card editing goes through the same `PUT`, with the UI arriving in Part 7
-- [x] Lazy seeding on first `GET`, using the existing demo board

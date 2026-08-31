@@ -17,9 +17,7 @@ current. Read the one for the area you are touching before changing it:
 | `backend/AGENTS.md` | Routes, sessions, board invariants, the AI client and its failure modes |
 | `frontend/AGENTS.md` | Components, state ownership, selectors, test traps |
 | `scripts/AGENTS.md` | The start and stop scripts |
-| `docs/PLAN.md` | Part-by-part build history and the measurements behind each decision |
 | `docs/DATABASE.md` | Schema, board JSON, invariants, board API contract |
-| `docs/code_review.md` | The Part 11 review, what was fixed, and what is deliberately not a fault |
 
 ## Commands
 
@@ -105,10 +103,9 @@ first: a `board` that is not an object, and two cards sharing an id.
 **The model is not dependable, and the code is built around that.** `ai.py` excludes two
 OpenRouter providers by name, `chat.py` retries `ATTEMPTS` times because gpt-oss sometimes
 leaves its answer in the reasoning channel with no content, and the system prompt states
-that claiming a change while `board` is null leaves the board untouched. Each of these has
-measurements behind it in the Part 9 notes in `docs/PLAN.md`. Change them only against
-fresh evidence, and re-run `uv run pytest -m live` several times: one green run proves
-little here.
+that claiming a change while `board` is null leaves the board untouched. Each of these is
+backed by a measurement, not a guess. Change them only against fresh evidence, and re-run
+`uv run pytest -m live` several times: one green run proves little here.
 
 **State ownership on the client.** `App` owns the session and renders loading, the login
 form, or the board. `KanbanBoard` owns all board state and every mutation handler;

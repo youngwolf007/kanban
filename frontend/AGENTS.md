@@ -1,7 +1,7 @@
 # Frontend
 
-Next.js app for the Kanban board. Built as a static export and served by FastAPI. As of
-Part 7 the board is loaded from and saved to the backend, so it is genuinely persistent.
+Next.js app for the Kanban board. Built as a static export and served by FastAPI. The board
+is loaded from and saved to the backend, so it is genuinely persistent.
 
 ## Stack
 
@@ -17,10 +17,11 @@ Part 7 the board is loaded from and saved to the backend, so it is genuinely per
 src/
   app/
     layout.tsx     root layout, Space Grotesk and Manrope via next/font/google
-    page.tsx       renders KanbanBoard, nothing else
+    page.tsx       renders App, nothing else
     globals.css    Tailwind import and the CSS custom properties for the palette
   components/
     App.tsx                session gate: loading, login form, or board
+    BackgroundGlow.tsx     the two decorative gradients shared by LoginForm and KanbanBoard
     LoginForm.tsx          username and password form, calls the auth API
     KanbanBoard.tsx        owns all board state and every mutation handler
     ChatSidebar.tsx        the AI chat panel, overlaid on the board
@@ -89,7 +90,7 @@ A failed save sets an error shown in the header and cleared by the next successf
 - `handleDragEnd` delegates to `moveCard` in `lib/kanban.ts`
 - `handleRenameColumn`, `handleAddCard`, and `handleDeleteCard` update `board` directly
 
-`handleEditCard` updates a card's title and details in place, added in Part 7. Editing goes
+`handleEditCard` updates a card's title and details in place. Editing goes
 through the same whole-board `PUT` as every other change.
 
 A card with no details is stored with `details: ""`. `NO_DETAILS` in `lib/kanban.ts` is a
@@ -135,9 +136,11 @@ build stage needs network access.
 
 Coverage: `kanban.test.ts` covers every `moveCard` case including no-ops, unknown ids, and
 non-mutation, plus `createId`; `KanbanBoard.test.tsx` covers the seeded render, column
-rename, add, delete, the card count, and the new card form's validation and cancel;
-`kanban.spec.ts` covers loading, console errors, the API route, add, delete, rename, and a
-mouse-driven drag between columns.
+rename and its debounce (including a rename still waiting when an AI board arrives, and
+when the component unmounts), add, delete, the card count, card editing, save-error
+handling, the new card form's validation and cancel, the blank-title guard, and AI board
+adoption; `kanban.spec.ts` covers loading, console errors, the API route, add, delete,
+rename, and a mouse-driven drag between columns.
 
 One selector trap, hit in practice:
 
@@ -152,7 +155,7 @@ drag must therefore start from the handle's bounding box, not the card's.
 The signed-out `/api/auth/me` check answers 401 by design, and Chrome logs that as a failed
 resource. The console-error spec filters that one URL out rather than treating it as a bug.
 
-Since Part 7 the board persists, so end-to-end tests are no longer isolated by default.
+The board persists, so end-to-end tests are not isolated by default.
 Playwright runs with `workers: 1` because every spec drives the same user and the same
 stored board, and `startFresh` resets the board between tests. Sign in through the UI before
 calling `resetBoard`: an API login sets the cookie, the app then goes straight to the board,
@@ -201,9 +204,9 @@ coexist, so the panel floats above the board and the user opens it when they wan
 
 If you ever move it back into the flow, re-run the two drag specs. They are what caught it.
 
-## Planned changes
+## Routing
 
-Every part of `docs/PLAN.md` is complete. The app stays on a single route at `/`. Login and board are chosen from client state rather
+The app stays on a single route at `/`. Login and board are chosen from client state rather
 than separate pages, which keeps the static export simple.
 
 ## Conventions

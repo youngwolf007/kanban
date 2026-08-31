@@ -8,7 +8,6 @@ from openai import APIError
 from app.ai import (
     BASE_URL,
     MODEL,
-    PROVIDER_ROUTING,
     TIMEOUT_SECONDS,
     AIError,
     ask,
@@ -18,8 +17,8 @@ QUESTION = [{"role": "user", "content": "What is 2+2?"}]
 
 # Cards go to the model as an array, not as the stored id-keyed map. A map would have to
 # be typed as `additionalProperties: CARD_SCHEMA`, which cannot say that the key must equal
-# the card's own id, so the model picks an arbitrary key. Part 9 rebuilds the map from this
-# array server side. See the Part 8 notes in docs/PLAN.md.
+# the card's own id, so the model picks an arbitrary key. The server rebuilds the map from
+# this array.
 CARD_SCHEMA = {
     "type": "object",
     "properties": {
@@ -77,7 +76,7 @@ class TestTheRequest:
     def test_excludes_the_provider_that_ignores_response_format(self, openai_class):
         ask(QUESTION)
         _, kwargs = openai_class.return_value.chat.completions.create.call_args
-        assert kwargs["extra_body"] == {"provider": PROVIDER_ROUTING}
+        assert kwargs["extra_body"] == {"provider": {"ignore": ["DeepInfra", "SiliconFlow"]}}
 
     def test_sends_a_response_format_when_one_is_given(self, openai_class):
         schema = {"type": "json_schema", "json_schema": {"name": "reply"}}
@@ -128,7 +127,7 @@ class TestLive:
         assert "4" in answer
 
     def test_the_model_honours_a_strict_json_schema(self):
-        """Part 9 sends cards this way, so prove the routed provider honours it."""
+        """Cards are sent this way, so prove the routed provider honours it."""
         answer = ask(
             [
                 {

@@ -31,7 +31,7 @@ powershell ./scripts/stop.ps1    # Windows
 ## Tests
 
 ```
-cd backend && uv run pytest              # 81 tests, no network needed
+cd backend && uv run pytest              # 96 tests, no network needed
 cd backend && uv run pytest -m live      # calls OpenRouter for real
 
 cd frontend && npm run test:unit         # Vitest
@@ -45,7 +45,7 @@ cd frontend && npm run test:e2e          # includes live AI specs, so it is slow
 backend/     FastAPI app, SQLite access, the OpenRouter client and chat route
 frontend/    Next.js app, exported statically and served at /
 scripts/     start and stop, per platform
-docs/        the plan and the database design
+docs/        the database design
 ```
 
 ## Documentation
@@ -53,7 +53,6 @@ docs/        the plan and the database design
 | Document | Covers |
 | --- | --- |
 | `AGENTS.md` | Requirements, technical decisions, palette, coding standards |
-| `docs/PLAN.md` | The build plan, part by part, and the decisions made along the way |
 | `docs/DATABASE.md` | Schema, board JSON, invariants, and the board API contract |
 | `backend/AGENTS.md` | Backend layout, routes, sessions, and the AI's failure modes |
 | `frontend/AGENTS.md` | Frontend layout, state, selectors, and test gotchas |

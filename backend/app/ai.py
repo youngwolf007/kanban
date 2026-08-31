@@ -10,7 +10,7 @@ TIMEOUT_SECONDS = 30.0
 # Pinned four runs each: DeepInfra ignores response_format and answers in prose, and
 # SiliconFlow always returns board=null, so it never applies a change the user asked for.
 # `require_parameters` excludes neither, because both claim support, so name them here.
-# CoreWeave, AkashML and Mancer 2 were 4 of 4 correct. See the Part 9 notes in docs/PLAN.md.
+# CoreWeave, AkashML and Mancer 2 were 4 of 4 correct.
 PROVIDER_ROUTING = {"ignore": ["DeepInfra", "SiliconFlow"]}
 
 
@@ -41,7 +41,7 @@ def client() -> OpenAI:
 def ask(messages: list[dict], response_format: dict | None = None) -> str:
     """Send a chat completion and return the reply text.
 
-    `response_format` carries the Structured Outputs schema from Part 9; without it the
+    `response_format` carries the Structured Outputs schema; without it the
     model answers in plain text. Any upstream failure becomes an AIError.
     """
     extra = {"response_format": response_format} if response_format else {}

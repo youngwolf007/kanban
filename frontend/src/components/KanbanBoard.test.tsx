@@ -431,5 +431,31 @@ describe("KanbanBoard", () => {
       expect(screen.queryByText("Buy milk")).not.toBeInTheDocument();
       expect(within(getFirstColumn()).getByText("2 cards")).toBeInTheDocument();
     });
+
+    it("drops a pending rename when the assistant's board arrives first", async () => {
+      await renderWithChat("Added it.", withCard);
+
+      await userEvent.type(
+        within(getFirstColumn()).getByLabelText(/^column title/i),
+        "!"
+      );
+      expect(savesMade()).toBe(0);
+
+      // Typed without the default per-keystroke delay: the rename's debounce timer is
+      // already running, and this must land well inside its 500ms window to be a real
+      // test of the interleaving rather than a race against typing speed.
+      await userEvent.click(screen.getByTestId("chat-open"));
+      await userEvent.type(
+        screen.getByLabelText("Message the assistant"),
+        "Add a card called Buy milk",
+        { delay: null }
+      );
+      await userEvent.click(screen.getByRole("button", { name: "Send" }));
+      await screen.findByText("Buy milk");
+
+      await afterTheRenameDelay();
+
+      expect(savesMade()).toBe(0);
+    });
   });
 });

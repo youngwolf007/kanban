@@ -1,200 +1,156 @@
 # Code Review
 
-A full review of the repository at commit `7b9a2b3` (branch `part10`), covering the backend, the
-frontend, the container setup, the scripts, and repository hygiene.
+A full review of the repository at commit `6aeb520` ("code-review-fixes"), plus the
+documentation cleanup currently uncommitted in the working tree (stripping references to
+`docs/PLAN.md` and the prior `docs/code_review.md`, both now deleted). Covers the backend,
+the frontend, the container setup, the scripts, CI, and repository hygiene.
 
-The findings below are kept as written, in the present tense of the review. What was done
-about each is in [Actions, in order](#actions-in-order) at the end.
+The findings below are kept as written, in the present tense of the review, as a record of
+what was found. See [Actions, in order](#actions-in-order) at the end for what has since
+been applied.
 
 ## Verdict
 
-The codebase is in good shape for an MVP. The architecture holds together, the board shape is
-genuinely shared end to end, and the documentation is unusually accurate: almost every design
-decision in `docs/PLAN.md` is backed by a measurement rather than an assertion. The full suite
-passes, both natively and against the container.
+The codebase is still in good shape overall, and the prior review's fixes hold up: the
+debounced-rename interleaving (its H1), the malformed-board and duplicate-id guards (H2,
+H3), the empty-`choices` guard (H4), and the `SECRET_KEY` generation in the start scripts
+(M1) were all spot-checked directly against the current code and are exactly as described.
 
-The findings below are, with one exception, robustness gaps rather than design mistakes. The
-exception is H1, which loses a user's data silently and is reachable by ordinary use.
-
-Nothing here contradicts a decision recorded in `docs/PLAN.md`. Where a finding touches a
-recorded decision, that is noted.
+Two findings below are as serious as anything in the last review. H1 is not a code defect
+but a process one: CI is currently failing on `main`, which means the safety net every
+other finding in this document (and the last one) depends on is not actually running for
+every change. H2 is a genuine data-loss bug, in the same family as the previously-fixed
+H1/H3 but in a path those fixes did not cover: the AI chat route can be made to silently
+replace a user's board with nothing.
 
 ## How this review was done
 
-Every source file was read: `backend/app/*.py`, `frontend/src/**`, the `Dockerfile`,
-`docker-compose.yml`, both script pairs, and the ignore files. Four candidate defects were then
-proved with throwaway probes rather than left as assertions. The probes were deleted after use;
-their output is quoted under each finding.
+Every source file was read: `backend/app/*.py`, `frontend/src/**`, `docs/*`, both script
+pairs, the `Dockerfile`, `docker-compose.yml`, and `.github/workflows/ci.yml`. The two
+high-severity findings below were then verified against live evidence rather than left as
+inference, per this project's root-cause-before-fix standard: H1 against the actual GitHub
+Actions run log (`gh run view --log-failed`), and H2 by tracing the exact code path through
+`chat.py` and `models.py` line by line.
 
-Suites at the time of review, all passing: backend 81 offline plus 4 live, Vitest 53, Playwright
-25 (run twice, natively and against the container), `next build` and `eslint` clean.
+The only recorded CI run (for this commit) shows the backend suite at 93 passed, 2 failed,
+4 deselected. `README.md:34`'s "81 tests, no network needed" is accordingly stale — the
+current offline count is 95, not 81 — a symptom of the same gap as H1, not a separate
+finding.
 
 ---
 
 ## High
 
-### H1. A debounced rename silently discards a change made just after it
+### H1. CI is red on `main`
 
-`frontend/src/components/KanbanBoard.tsx:54-84`
+`.github/workflows/ci.yml`
 
-Column rename saves through `persistAfterTyping`, which schedules a `PUT` of the board snapshot
-captured at that moment. Any other change made within the 500ms window saves immediately, but the
-rename timer then fires with its **older** snapshot and overwrites the server with it. The newer
-change is gone, and because `PUT` is last write wins with no merge, nothing errors.
+The `backend` and `frontend` jobs run independently, with no `needs:` dependency and no
+artifact sharing between them. `backend/tests/test_static.py` requires a built
+`frontend/out` to exist (it asserts `GET /` returns the exported page and its `_next/`
+assets), but nothing in the `backend` job ever builds it.
 
-The UI does not reveal the loss: local state still holds the newer board, so the card stays on
-screen until the next reload.
-
-Evidence. A probe rendered the board, renamed a column, added a card before the timer fired, then
-waited for it:
+This is not theoretical — it is the actual, current state of `main`:
 
 ```
-LAST SAVED column title: Renamed
-LAST SAVED contains 'Buy milk': false
-LAST SAVED card count: 8
+$ gh run list --limit 1
+conclusion: failure   headBranch: main   name: CI
+
+$ gh run view --log-failed
+FAILED tests/test_static.py::test_root_serves_exported_frontend -
+  RuntimeError: StaticFiles directory '.../frontend/out' does not exist.
+FAILED tests/test_static.py::test_root_serves_the_built_assets -
+  RuntimeError: StaticFiles directory '.../frontend/out' does not exist.
+2 failed, 93 passed, 4 deselected in 18.75s
 ```
 
-The column on screen read "3 cards"; the board on the server had 8 cards and no "Buy milk".
+It only passes locally because a native `npm run build` was run by hand at some point,
+leaving `frontend/out` sitting in the working tree. `CLAUDE.md`'s "CI runs this too" note
+(re: `ruff check`) is accurate for lint, but the suite behind it has been failing since
+this commit landed.
 
-The existing test (`KanbanBoard.test.tsx:211`) renames in isolation, so the window is never
-opened. The same loss applies to a drag, a delete, or an edit made in that window, and to an AI
-change arriving from `POST /api/chat` while a rename is pending.
+**Action.** Give the `backend` job a built `frontend/out` before `pytest` runs — either
+`needs: frontend` plus `actions/upload-artifact`/`download-artifact` for `frontend/out`, or
+build the frontend inline in the `backend` job. Either way, re-run CI to confirm green
+before trusting it as a gate again.
 
-A second, milder case sits in the same mechanism: the unmount cleanup at `KanbanBoard.tsx:45-52`
-drops a pending rename rather than flushing it, so renaming a column and immediately signing out
-loses the rename.
+### H2. The AI chat path can silently wipe the board
 
-**Action.** Cancel any pending rename timer whenever a non-debounced change is applied. The new
-snapshot already contains the rename, because it derives from current state, so cancelling loses
-nothing. Flush rather than drop on unmount. Add a regression test for the interleaving above.
+`backend/app/chat.py:172`, `backend/app/chat.py:193-206`, `backend/app/models.py:43-44`
 
-### H2. A non-object `board` from the model returns 500, not the documented 502
+`ask_for_json`'s "usable response" check is:
 
-`backend/app/chat.py:126-131` and `backend/app/chat.py:177-182`
-
-`to_stored_shape` calls `board.get(...)` on whatever the model put in the `board` key. The call
-site catches `ValidationError`, `KeyError` and `TypeError`, but a string or an array raises
-`AttributeError`, which is not in that tuple and escapes as an unhandled 500.
-
-Evidence. Two probes, one returning `"board": "the board"` and one returning `"board": [1,2,3]`:
-
-```
-AttributeError: 'list' object has no attribute 'get'
-app\chat.py:129: AttributeError
+```python
+if not isinstance(data, dict) or not (data.get("reply") or data.get("board")):
 ```
 
-This matters because the module is otherwise built on the premise that the model's output cannot
-be trusted, and says so at `chat.py:149-151`. The contract documented in `backend/AGENTS.md` is
-502 for an unusable answer.
+An empty `board: {}` is falsy in Python, so this check is satisfied whenever `reply` is
+non-empty — an empty-but-present board is never treated as "no usable response."
 
-**Action.** Reject a `board` that is not a dict before shaping it, with the same 502 as any other
-unusable answer.
+From there, in `chat()`: `returned = data.get("board")` is `{}`, which `is not None`, so
+execution proceeds to `to_stored_shape({})` → `BoardData.model_validate({"columns": [],
+"cards": {}})`. `BoardData.columns` and `BoardData.cards` (`models.py:43-44`) have a
+`max_length` cap but no `min_length`, and the invariant validator (`models.py:46-74`) is
+satisfied vacuously when both collections are empty — every check in it is a no-op over an
+empty list. The empty board validates cleanly, gets persisted via `save_board`, and is
+handed back to the client as `ChatResponse(board=updated)`, which the frontend adopts
+through `adoptBoardFromAi` without question.
 
-### H3. Duplicate card ids from the model silently overwrite an existing card
+A model that returns ordinary reply text alongside a non-null-but-empty board — a
+truncated response, a provider that answers the question but drops the board payload,
+anything short of returning `board: null` outright — silently replaces the user's real
+board with nothing, on both server and client, with no error surfaced anywhere. This is
+exactly the class of bug the prior review's H1 and H3 addressed (silent data loss reachable
+by ordinary use), in a path neither of those fixes touches. `backend/AGENTS.md` documents
+the `board == null` ("untouched") case but says nothing about a non-null, empty one.
 
-`backend/app/chat.py:130`
-
-`{card["id"]: card for card in board.get("cards", [])}` collapses duplicates: the last card wins.
-The collapse happens *before* `BoardData` validates, so the invariants cannot catch it. The result
-is a structurally valid board in which an existing card has been replaced by a different one.
-
-Evidence. A probe returned the current board plus one extra card reusing `card-1`'s id:
-
-```
-DUPLICATE IDS -> 200 | card-1 title now: Impostor
-```
-
-HTTP 200, change persisted, the original "Align roadmap themes" gone. The model is explicitly told
-at `chat.py:92` to give a new card an unused id, which is exactly the kind of instruction the Part
-9 notes show it follows unreliably.
-
-**Action.** Detect a repeated id while building the map and refuse the board with 502.
-
-### H4. An empty `choices` list from a provider returns 500
-
-`backend/app/ai.py:57`
-
-`completion.choices[0]` assumes at least one choice. `ai.py` converts every other upstream failure
-into an `AIError` carrying a message safe to show a user; this one raises `IndexError` straight
-through both the 503 and 502 handlers in `chat.py`.
-
-Evidence:
-
-```
-RAISED: IndexError - list index out of range
-```
-
-Given the provider variability documented in the Part 9 notes, an empty `choices` is plausible
-rather than theoretical.
-
-**Action.** Raise `AIError` when `choices` is empty, so it joins the existing 503 path.
+**Action.** Reject a returned board with no columns and no cards the same way a malformed
+one is rejected — 502, not a silent save. Add a regression test that returns `{"reply":
+"Done!", "board": {"columns": [], "cards": []}}` from a mocked `ask` and asserts the
+board is neither saved nor returned.
 
 ---
 
 ## Medium
 
-### M1. The shipped container signs sessions with the public default key
+### M1. The single riskiest documented interaction has no test
 
-`backend/app/main.py:16`, `docker-compose.yml`
+`frontend/src/components/KanbanBoard.tsx:105-114`, `CLAUDE.md`
 
-`SECRET_KEY` falls back to `dev-secret-key-for-local-use-only`, and compose never sets it, so every
-container built from this repository signs its session cookies with a key published in the source.
-Anyone who has read the repo can forge a cookie for any `user_id` and obtain a signed-in session
-without credentials.
+`CLAUDE.md` calls out, in its own words, that a board arriving from the AI while a rename
+is still debouncing is "the trickiest case" and that "getting this wrong loses a change
+silently." The mechanism (`adoptBoardFromAi` cancels the pending rename rather than
+flushing it, since the AI's board already reflects everything up to that point) is
+implemented correctly by inspection, and the three neighboring debounce scenarios are well
+tested (`KanbanBoard.test.tsx:209-288`: immediate-save-cancels-pending, and
+flush-on-unmount). But no test in either suite exercises an AI-sourced board arriving
+*while* a rename is still within its 500ms window — the specific interleaving the
+documentation singles out as the one most likely to be gotten wrong. The `ai chat` describe
+block (`KanbanBoard.test.tsx:370-434`) covers board adoption on its own, not concurrently
+with a pending rename.
 
-This is a knock-on of a recorded decision (Part 4: the fallback exists because the root `.env`
-holds only `OPENROUTER_API_KEY`, and without it the container would not boot). The decision is
-sound; the gap is that nothing then generates a real key for the container.
+**Action.** Add a test: start a rename, trigger an AI board update before the debounce
+timer fires, and assert the rename's `PUT` never goes out.
 
-For an MVP bound to localhost this is acceptable and need not block anything. It is recorded here
-because it is the one item that must change before this is exposed to a network.
+### M2. A provider-exclusion test that can't catch a regression to what it's testing
 
-**Action.** Have the start scripts generate a `SECRET_KEY` into `.env` when absent and pass it
-through compose. Keep the fallback for tests and native runs.
+`backend/tests/test_ai.py:77-80`
 
-### M2. The UI accepts a column title the backend refuses
+```python
+def test_excludes_the_provider_that_ignores_response_format(self, openai_class):
+    ask(QUESTION)
+    _, kwargs = openai_class.return_value.chat.completions.create.call_args
+    assert kwargs["extra_body"] == {"provider": PROVIDER_ROUTING}
+```
 
-`frontend/src/components/KanbanColumn.tsx:44-49`, `backend/app/models.py:22-27`
+This compares the value sent against the same `PROVIDER_ROUTING` constant it was built
+from, not against a literal `{"ignore": ["DeepInfra", "SiliconFlow"]}`. If someone edits or
+empties `PROVIDER_ROUTING` in `ai.py`, this test still passes — it only proves the constant
+was passed through unchanged, not that it still names the right providers. The two provider
+names (backed, per `ai.py`'s comment, by a four-run measurement) are recorded nowhere a
+test would catch their loss.
 
-The column title input is unconstrained, so clearing it puts the board into a state the API rejects
-with 422. The user sees "Could not save your changes" and, from then on, every save of that board
-fails until the title is restored. The client can enter a state it cannot leave by saving.
-
-**Action.** Either keep the last non-blank title when the field is cleared, or validate before
-calling `onRename`, so the client never holds a board the server would refuse.
-
-### M3. A failed sign out is silent
-
-`frontend/src/components/App.tsx:19-22`
-
-`await logout()` throws on a non-ok response and nothing catches it. The session is not cleared, no
-message is shown, and the click produces an unhandled promise rejection. The user appears to have
-clicked a dead button.
-
-**Action.** Catch, and either surface the failure or clear the local session anyway.
-
-### M4. A transient AI failure gets no retry, while an empty answer gets three
-
-`backend/app/chat.py:137-141`
-
-`ATTEMPTS = 3` guards a malformed or empty answer, but an `AIError` breaks out of the loop on first
-occurrence and becomes a 503. A timeout from a slow provider is precisely the case the comment at
-`chat.py:19-23` describes as fixable by re-routing, since OpenRouter routes each attempt afresh.
-
-**Action.** Retry an `AIError` inside the same loop, raising 503 only once the attempts are
-exhausted. With `TIMEOUT_SECONDS = 30` this raises the worst-case wait, so keep the attempt count
-in view.
-
-### M5. Nothing bounds request or prompt size
-
-`backend/app/chat.py:108-110`, `backend/app/board.py:27-33`
-
-`ChatRequest.message` has no length limit, `PUT /api/board` accepts a board of any size, and the
-whole board is serialised into the system prompt on every chat turn. `MAX_HISTORY` bounds the
-transcript but not the board or the message. A large board makes every chat call slower and more
-expensive; a large message is unbounded input to a paid API.
-
-**Action.** Cap the message length and the stored board size, rejecting beyond them with 422.
+**Action.** Assert against the literal provider list, not the constant under test.
 
 ---
 
@@ -202,19 +158,13 @@ expensive; a large message is unbounded input to a paid API.
 
 | # | Finding | Location | Action |
 | --- | --- | --- | --- |
-| L1 | Duplicate detection is quadratic: `placed.count(...)` runs inside a comprehension over `placed` | `backend/app/models.py:46` | Use `collections.Counter` |
-| L2 | Docstring says "retried once"; `ATTEMPTS` is 3 | `backend/app/chat.py:135` | Correct the docstring |
-| L3 | The `min-w-0` fix applied to `KanbanCard` is missing from the preview, which is the identical pattern | `KanbanCardPreview.tsx:10` vs `KanbanCard.tsx:100-102` | Add `min-w-0 break-words` |
-| L4 | `"No details yet."` is written into stored data, and the AI never applies it, so identical empty cards render differently by origin | `KanbanBoard.tsx:129,164` | Make it a render-time fallback, not data |
-| L5 | All five columns share `aria-label="Column title"` | `KanbanColumn.tsx:48` | Include the column name |
-| L6 | The card article carries drag listeners and an implicit `role="button"` while containing Edit and Remove buttons | `KanbanCard.tsx:95-96` | Move the drag handle to its own element; this also removes the selector trap documented in `frontend/AGENTS.md` |
-| L7 | `stored.split("$")` is unguarded, so a corrupted hash raises `ValueError` and returns 500 rather than 401 | `backend/app/db.py:57` | Return `False` on a malformed hash |
-| L8 | Login does no hashing work for an unknown username, so response time reveals whether a username exists | `backend/app/auth.py:28-32` | Verify against a dummy hash on the miss path |
-| L9 | `create_user` is typed to return `int`; `cursor.lastrowid` is optional | `backend/app/db.py:78-88` | Narrow or assert |
-| L10 | No CI workflow, and no Python linter or formatter configured | repository root, `backend/pyproject.toml` | Add a workflow running the offline suites and eslint; add `ruff` |
-| L11 | No `HEALTHCHECK` although `/api/health` exists, and the container runs as root | `Dockerfile` | Add a healthcheck and a non-root user |
-| L12 | The sign-off checkboxes are unticked although `docs/PLAN.md` records the sign-off and Part 6 shipped | `docs/DATABASE.md:207-211` | Tick them, so the two documents agree |
-| L13 | `npm run test` duplicates `npm run test:unit` | `frontend/package.json` | Drop one |
+| L1 | Byte-for-byte duplicated decorative gradient markup, hand-deriving `--primary-blue`/`--secondary-purple` as literal `rgba()` triples instead of referencing the CSS custom properties | `KanbanBoard.tsx:216-217`, `LoginForm.tsx:31-32` | Factor into one shared component or reference the custom properties directly |
+| L2 | `frontend/AGENTS.md` contradicts itself: says `page.tsx` renders `KanbanBoard` directly in one place, and correctly says it renders `App` in another | `frontend/AGENTS.md:20` vs `frontend/AGENTS.md:67` | Fix line 20 to match line 67 and the actual code |
+| L3 | `frontend/AGENTS.md`'s description of `KanbanBoard.test.tsx` lists only five scenarios; the file also covers card editing, save-error handling, blank-title guards, and AI board adoption | `frontend/AGENTS.md:136-140` | Expand the description so the doc doesn't undersell current coverage |
+| L4 | `to_stored_shape`'s docstring claims it raises `ValueError` for two specific cases, but a card missing `id` raises `KeyError` and a non-dict card raises `TypeError` — both are still caught correctly by the caller, so this is a doc gap, not a bug | `backend/app/chat.py:129-146` | Update the docstring to name all three exception types |
+| L5 | No type checker (mypy/pyright) configured for the backend; ruff's `UP` ruleset checks syntax modernity, not type correctness, despite every function being fully annotated | `backend/pyproject.toml` | Add a type checker to CI if the annotations are meant to be enforced, or note that they're advisory only |
+| L6 | `test_health.py` and `test_static.py` build `TestClient(app)` at module scope instead of using `conftest.py`'s `client`/`signed_in` fixtures — harmless here since neither touches the DB, but inconsistent with every other test file | `backend/tests/test_health.py:5`, `backend/tests/test_static.py:5` | Use the shared fixtures for consistency |
+| L7 | The container still runs as root; no `USER` directive alongside the `HEALTHCHECK` | `Dockerfile` | Carried forward from the prior review's L11 — see below, still deliberately deferred |
 
 ---
 
@@ -222,47 +172,35 @@ expensive; a large message is unbounded input to a paid API.
 
 Recorded so a later reader does not re-open them.
 
-- **Last write wins on `PUT /api/board`.** Accepted deliberately in `docs/DATABASE.md`, with the
-  upgrade path written down. H1 is not this: it is the client discarding its own newer change,
-  which the documented trade-off does not cover.
-- **The chat panel overlaying the board, closed by default.** Measured, not styled. The numbers are
-  in the Part 10 notes.
-- **Excluding two providers by name.** Narrow, evidence-based and documented, rather than a
-  whitelist that rots as OpenRouter's roster changes.
-- **The board stored as one JSON document.** Correct for an app whose boards are a few kilobytes
-  and which round-trips a whole board through a model.
-- **`initialData` surviving in the frontend.** A test fixture, tree shaken from the bundle, with a
-  Playwright test asserting the board comes from the API.
+- **Last write wins on `PUT /api/board`, the closed-by-default chat panel, the two-provider
+  exclusion, and the board stored as one JSON document.** All previously documented as
+  deliberate and measured; still hold, unchanged.
+- **`initialData` surviving in `lib/kanban.ts`.** Confirmed still a test fixture only, not
+  reachable from the running app; the seed used at runtime is `DEFAULT_BOARD` in
+  `models.py`.
+- **`ask_for_json` returning whichever status/detail (502 vs 503) came from the last failed
+  attempt across retries.** `chat.py`'s own docstring names this as an accepted tradeoff
+  ("The status of the last failure is what the caller sees"), not an oversight.
+- **The container still running as root (L7 above).** The prior review deferred this
+  deliberately: the `pm-data` volume's files are already root-owned, and switching users
+  without a chown-first entrypoint would break an existing install's ability to write its
+  own database. That reasoning is still sound and nothing has changed to invalidate it —
+  worth revisiting only alongside a real chown-on-start entrypoint, not on its own.
+- **The uncommitted documentation cleanup in the working tree.** Diffed directly
+  (`git diff HEAD`) across `AGENTS.md`, `CLAUDE.md`, `README.md`, `backend/AGENTS.md`,
+  `frontend/AGENTS.md`, and `docs/DATABASE.md`: every change strips a now-dangling
+  reference to `docs/PLAN.md` or the prior `docs/code_review.md` (both deleted in the same
+  tree). Mechanical and consistent, no functional change, no reference left dangling.
 
 ## Actions, in order
 
-All of these are done except where noted. Each fix carries a regression test that fails
-against the code as it was.
-
-1. [x] H1: an immediate save cancels the waiting rename, unmount flushes it, and a board
-   from the AI drops it, because that one is already stored. Three tests in
-   `KanbanBoard.test.tsx` cover the interleaving, the unmount, and the blank title
-2. [x] H3: `to_stored_shape` refuses a repeated card id with 502
-3. [x] H2: `to_stored_shape` refuses a `board` that is not an object with 502
-4. [x] H4: `ai.py` raises `AIError` when `choices` is empty, so it joins the 503 path
-5. [x] M2: `KanbanColumn` keeps the title in a local draft and never hands a blank one to
-   `onRename`, so the board keeps the last usable title and the field restores it on blur
-6. [x] M3: a failed sign out clears the local session anyway and returns to the login form
-7. [x] M1: the start scripts generate a `SECRET_KEY` into `.env` when there is not one, and
-   compose passes it through `env_file`. The fallback stays for tests and native runs
-8. [x] M4: an `AIError` is retried inside the same loop and only raises 503 once `ATTEMPTS`
-   are exhausted
-9. [x] M5: `MAX_MESSAGE_LENGTH` bounds the message and each history entry;
-   `MAX_COLUMNS`, `MAX_CARDS`, `MAX_TITLE_LENGTH` and `MAX_DETAILS_LENGTH` bound the board
-10. [x] L1 to L13, with one exception below
-
-### The one thing not done
-
-L11 asked for a healthcheck **and** a non-root container user. The healthcheck is in, and
-the container reports healthy. Running as a non-root user is not, deliberately: the
-`pm-data` volume already exists with its files owned by root, so switching the user would
-leave a running install unable to write its own database, and the only way out would be
-`docker compose down -v`, which destroys the board. Doing it safely needs an entrypoint that
-fixes ownership before dropping privileges. That is worth doing before this is exposed to a
-network, alongside M1, and not worth risking someone's data for on an MVP bound to
-localhost.
+1. [x] H1: give the `backend` CI job a built `frontend/out` before `pytest` runs, then
+   confirm a green run before trusting CI as a gate again.
+2. [x] H2: reject an AI-returned board with no columns and no cards, the same way a
+   malformed one is already rejected, with a regression test.
+3. [x] M1: add a test for an AI board update arriving while a rename is still debouncing.
+4. [x] M2: assert the literal excluded-provider list in `test_ai.py`, not the constant
+   under test.
+5. [x] L1 through L6: straightforward cleanup, any order.
+6. [ ] L7 / non-root container user: still correctly deferred; revisit only alongside a
+   chown-on-start entrypoint, and only if this is heading toward exposure beyond localhost.

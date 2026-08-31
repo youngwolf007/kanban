@@ -291,6 +291,18 @@ class TestRejectingBadResponses:
         assert response.status_code == 502
         assert signed_in.get("/api/board").json() == before
 
+    def test_an_empty_board_is_not_persisted(self, signed_in, ai):
+        """An empty board validates cleanly but is never a real answer — it means the
+        model dropped the board, not that the user asked to clear it."""
+        before = signed_in.get("/api/board").json()
+        ai.response = {"reply": "Done!", "board": {"columns": [], "cards": []}}
+
+        response = signed_in.post("/api/chat", json={"message": "Clear everything"})
+
+        assert response.status_code == 502
+        assert response.json()["detail"] == "The AI returned an invalid board"
+        assert signed_in.get("/api/board").json() == before
+
     def test_a_reused_card_id_is_rejected(self, signed_in, ai):
         """Two cards sharing an id would collapse into one on the way into the map,
         leaving a valid board that has quietly lost the card that was there."""

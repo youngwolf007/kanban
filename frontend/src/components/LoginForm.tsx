@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { BackgroundGlow } from "@/components/BackgroundGlow";
 import { login, type Session } from "@/lib/api";
 
 type LoginFormProps = {
@@ -28,8 +29,7 @@ export const LoginForm = ({ onSignedIn }: LoginFormProps) => {
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-6">
-      <div className="pointer-events-none absolute left-0 top-0 h-[420px] w-[420px] -translate-x-1/3 -translate-y-1/3 rounded-full bg-[radial-gradient(circle,_rgba(32,157,215,0.25)_0%,_rgba(32,157,215,0.05)_55%,_transparent_70%)]" />
-      <div className="pointer-events-none absolute bottom-0 right-0 h-[520px] w-[520px] translate-x-1/4 translate-y-1/4 rounded-full bg-[radial-gradient(circle,_rgba(117,57,145,0.18)_0%,_rgba(117,57,145,0.05)_55%,_transparent_75%)]" />
+      <BackgroundGlow />
 
       <main className="relative w-full max-w-md rounded-[32px] border border-[var(--stroke)] bg-white/85 p-10 shadow-[var(--shadow)] backdrop-blur">
         <div className="h-2 w-12 rounded-full bg-[var(--accent-yellow)]" />

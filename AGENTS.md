@@ -49,5 +49,5 @@ A working MVP of the frontend has been built and is already in frontend. This is
 
 ## Working documentation
 
-All documents for planning and executing this project will be in the docs/ directory.
-Please review the docs/PLAN.md document before proceeding.
+Reference documentation for the current system lives in the docs/ directory and in each
+directory's own `AGENTS.md`. Start with `CLAUDE.md` in the project root.

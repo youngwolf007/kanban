@@ -24,7 +24,7 @@ MAX_MESSAGE_LENGTH = 4000
 # the reasoning channel and no content at all, despite finish_reason "stop". Each attempt is
 # routed afresh by OpenRouter, so a retry usually lands on a provider that answers properly.
 # Three bounds the wait at roughly a minute and a half in the worst case, while making a
-# whole-request failure rare. See the Part 9 notes in docs/PLAN.md.
+# whole-request failure rare.
 ATTEMPTS = 3
 
 CARD_SCHEMA = {
@@ -51,7 +51,6 @@ COLUMN_SCHEMA = {
 
 # Cards travel as an array, never as the stored id-keyed map: a JSON Schema cannot say that
 # a map's key must equal its card's id, and the model keyed them arbitrarily when asked.
-# The Part 8 notes in docs/PLAN.md have the measurements.
 RESPONSE_SCHEMA = {
     "type": "json_schema",
     "json_schema": {
@@ -130,9 +129,11 @@ def to_model_shape(board: BoardData) -> dict:
 def to_stored_shape(board: object) -> dict:
     """The model's board, with its cards keyed by id ready for BoardData.
 
-    Raises ValueError for the two things BoardData cannot judge for itself: a board
-    that is not an object at all, and two cards sharing an id, which would collapse
-    into one on the way into the map and leave a valid board missing a card.
+    Raises for the things BoardData cannot judge for itself: ValueError for a board
+    that is not an object at all, or for two cards sharing an id, which would collapse
+    into one on the way into the map and leave a valid board missing a card; KeyError
+    for a card missing its own id; TypeError for a card that is not an object. The
+    caller catches all three alongside BoardData's own ValidationError.
     """
     if not isinstance(board, dict):
         raise ValueError("board is not an object")
@@ -203,6 +204,12 @@ def chat(
         raise HTTPException(
             status_code=502, detail="The AI returned an invalid board"
         ) from error
+
+    # An empty board validates cleanly (no invariant is violated by nothing), but it is
+    # never a real answer: it means the model dropped the board, not that the user asked
+    # to clear it. Treat it the same as a malformed board rather than saving it.
+    if not updated.columns and not updated.cards:
+        raise HTTPException(status_code=502, detail="The AI returned an invalid board")
 
     save_board(user["id"], updated.model_dump())
     return ChatResponse(reply=reply or "Board updated.", board=updated)

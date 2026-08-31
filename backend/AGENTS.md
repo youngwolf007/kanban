@@ -134,7 +134,7 @@ exactly, `cardIds` included, so the JSON needs no mapping in either direction.
 One `model_validator` on `BoardData` enforces the five invariants from `docs/DATABASE.md`:
 `cardIds` resolve to real cards, each card sits in exactly one column, card ids match their
 keys, column ids are unique, and titles are not blank. A failure surfaces as a 422 and
-nothing is written. From Part 9 the same validator guards whatever the AI returns.
+nothing is written. The same validator guards whatever the AI returns.
 
 `PUT /api/board` replaces the whole board; there are no per-card routes, and writes are last
 write wins. `save_board` is an upsert on `user_id`, so a user never has two board rows.
@@ -147,7 +147,7 @@ size is an upstream cost, not only a storage question.
 
 `ai.py` wraps the `openai` SDK pointed at OpenRouter's OpenAI-compatible endpoint, using
 `openai/gpt-oss-120b` with a 30 second timeout. `ask(messages, response_format=None)`
-returns the reply text; `response_format` carries Part 9's Structured Outputs schema.
+returns the reply text; `response_format` carries the Structured Outputs schema.
 
 Everything that can fail becomes an `AIError` with a message safe to show a user: a missing
 key, an upstream error, a timeout, or a response carrying no choices at all. Nothing reaches
@@ -179,7 +179,7 @@ id, which would otherwise collapse into one and leave a valid board quietly miss
 | --- | --- |
 | 200 | A reply, plus a board when the AI changed one |
 | 401 | Not signed in |
-| 502 | The AI's answer was unusable or its board was invalid. Nothing was written |
+| 502 | The AI's answer was unusable or its board was invalid — including an empty board (no columns, no cards), which is treated as a dropped answer, not a request to clear the board. Nothing was written |
 | 503 | OpenRouter could not be reached |
 
 The model is not dependable on its own, and the route is built around that:
@@ -193,9 +193,9 @@ The model is not dependable on its own, and the route is built around that:
 - The system prompt says plainly that claiming a change while `board` is null leaves the
   board untouched. Without that the model regularly said it had done something it had not.
 
-The measurements behind each of these are in the Part 9 notes in `docs/PLAN.md`. Change any
-of them only against fresh evidence, and rerun `uv run pytest -m live` several times: one
-green run proves very little here.
+Each of these is backed by a measurement, not a guess. Change any of them only against
+fresh evidence, and rerun `uv run pytest -m live` several times: one green run proves very
+little here.
 
 ## Sessions
 

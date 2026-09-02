@@ -101,9 +101,9 @@ export const KanbanCard = ({ card, onDelete, onEdit }: KanbanCardProps) => {
       )}
       data-testid={`card-${card.id}`}
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start gap-2">
         {/* The drag listeners live on their own control. Carrying them on the article
-            gave it role="button" from dnd-kit while Edit and Remove sat inside it,
+            gave it role="button" from dnd-kit while the action buttons sat inside it,
             which is ambiguous to a screen reader and to any role query. */}
         <button
           type="button"
@@ -123,8 +123,9 @@ export const KanbanCard = ({ card, onDelete, onEdit }: KanbanCardProps) => {
           </svg>
         </button>
         {/* min-w-0 or this refuses to shrink past its longest word, pushing the
-            shrink-0 buttons outside the card once the column gets narrow. */}
-        <div className="min-w-0 break-words">
+            shrink-0 buttons outside the card once the column gets narrow. Icon
+            buttons rather than text ones so this column stays as wide as possible. */}
+        <div className="min-w-0 flex-1 break-words">
           <h4 className="font-display text-base font-semibold text-[var(--navy-dark)]">
             {card.title}
           </h4>
@@ -132,22 +133,47 @@ export const KanbanCard = ({ card, onDelete, onEdit }: KanbanCardProps) => {
             {card.details || NO_DETAILS}
           </p>
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-1">
+        <div className="flex shrink-0 items-center gap-1">
           <button
             type="button"
             onClick={startEditing}
-            className="rounded-full border border-transparent px-2 py-1 text-xs font-semibold text-[var(--primary-blue)] transition hover:border-[var(--stroke)]"
+            className="rounded-full border border-transparent p-1.5 text-[var(--primary-blue)] transition hover:border-[var(--stroke)] hover:bg-[var(--surface)]"
             aria-label={`Edit ${card.title}`}
           >
-            Edit
+            <svg aria-hidden="true" viewBox="0 0 16 16" className="h-4 w-4">
+              <path
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M11.5 2.5a1.5 1.5 0 0 1 2 2L5 13l-3 1 1-3 8.5-8.5Z"
+              />
+              <path
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                d="M9.5 4.5l2 2"
+              />
+            </svg>
           </button>
           <button
             type="button"
             onClick={() => onDelete(card.id)}
-            className="rounded-full border border-transparent px-2 py-1 text-xs font-semibold text-[var(--gray-text)] transition hover:border-[var(--stroke)] hover:text-[var(--navy-dark)]"
+            className="rounded-full border border-transparent p-1.5 text-[var(--gray-text)] transition hover:border-[var(--stroke)] hover:bg-[var(--surface)] hover:text-[var(--navy-dark)]"
             aria-label={`Delete ${card.title}`}
           >
-            Remove
+            <svg aria-hidden="true" viewBox="0 0 16 16" className="h-4 w-4">
+              <path
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M3 4.5h10M6.5 4.5V3a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1.5M4.5 4.5 5 13a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1l.5-8.5M6.7 7v4.2M9.3 7v4.2"
+              />
+            </svg>
           </button>
         </div>
       </div>

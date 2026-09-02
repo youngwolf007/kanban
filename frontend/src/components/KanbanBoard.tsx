@@ -216,71 +216,43 @@ export const KanbanBoard = ({ username, onSignOut }: KanbanBoardProps = {}) => {
     <div className="relative overflow-hidden">
       <BackgroundGlow />
 
-      <main className="relative mx-auto flex min-h-screen max-w-[1500px] flex-col gap-10 px-6 pb-16 pt-12">
-        <header className="flex flex-col gap-6 rounded-[32px] border border-[var(--stroke)] bg-white/80 p-8 shadow-[var(--shadow)] backdrop-blur">
-          <div className="flex flex-wrap items-start justify-between gap-6">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[var(--gray-text)]">
-                Single Board Kanban
-              </p>
-              <h1 className="mt-3 font-display text-4xl font-semibold text-[var(--navy-dark)]">
-                Kanban Studio
-              </h1>
-              <p className="mt-3 max-w-xl text-sm leading-6 text-[var(--gray-text)]">
-                Keep momentum visible. Rename columns, drag cards between stages,
-                and capture quick notes without getting buried in settings.
-              </p>
-            </div>
-            <div className="flex flex-col items-end gap-3">
-              {onSignOut && (
-                <div className="flex items-center gap-3">
-                  {username && (
-                    <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
-                      {username}
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={onSignOut}
-                    className="rounded-full border border-[var(--stroke)] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--navy-dark)] transition hover:border-[var(--primary-blue)] hover:text-[var(--primary-blue)]"
-                  >
-                    Sign out
-                  </button>
-                </div>
-              )}
-              <div className="rounded-2xl border border-[var(--stroke)] bg-[var(--surface)] px-5 py-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[var(--gray-text)]">
-                  Focus
-                </p>
-                <p className="mt-2 text-lg font-semibold text-[var(--primary-blue)]">
-                  One board. Five columns. Zero clutter.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {error && (
-            <p
-              role="alert"
-              data-testid="board-error"
-              className="rounded-xl border border-[var(--accent-yellow)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--navy-dark)]"
-            >
-              {error}
+      <main className="relative mx-auto flex min-h-screen max-w-[1600px] flex-col gap-6 px-6 pb-16 pt-10">
+        <header className="flex flex-wrap items-start justify-between gap-6 rounded-[32px] border border-[var(--stroke)] bg-white/80 px-8 py-6 shadow-[var(--shadow)] backdrop-blur">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[var(--gray-text)]">
+              Single Board Kanban
             </p>
-          )}
-
-          <div className="flex flex-wrap items-center gap-4">
-            {board.columns.map((column) => (
-              <div
-                key={column.id}
-                className="flex items-center gap-2 rounded-full border border-[var(--stroke)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--navy-dark)]"
-              >
-                <span className="h-2 w-2 rounded-full bg-[var(--accent-yellow)]" />
-                {column.title}
-              </div>
-            ))}
+            <h1 className="mt-2 font-display text-3xl font-semibold text-[var(--navy-dark)]">
+              Kanban Studio
+            </h1>
           </div>
+          {onSignOut && (
+            <div className="flex items-center gap-3">
+              {username && (
+                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
+                  {username}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={onSignOut}
+                className="rounded-full border border-[var(--stroke)] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--navy-dark)] transition hover:border-[var(--primary-blue)] hover:text-[var(--primary-blue)]"
+              >
+                Sign out
+              </button>
+            </div>
+          )}
         </header>
+
+        {error && (
+          <p
+            role="alert"
+            data-testid="board-error"
+            className="rounded-xl border border-[var(--accent-yellow)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--navy-dark)]"
+          >
+            {error}
+          </p>
+        )}
 
         <DndContext
           sensors={sensors}
@@ -288,7 +260,7 @@ export const KanbanBoard = ({ username, onSignOut }: KanbanBoardProps = {}) => {
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <section className="grid gap-6 lg:grid-cols-5">
+          <section className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             {board.columns.map((column) => (
               <KanbanColumn
                 key={column.id}

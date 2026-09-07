@@ -35,10 +35,13 @@ A working MVP of the frontend has been built and is already in frontend. This is
 ## Color Scheme
 
 - Accent Yellow: `#ecad0a` - accent lines, highlights
-- Blue Primary: `#209dd7` - links, key sections
+- Blue Primary: `#209dd7` - links, key sections, non-text UI (borders, icons, backgrounds)
+- Blue Primary (text): `#0e7490` - the same blue used as actual text; `#209dd7` is 3.06:1
+  on white, below the 4.5:1 AA bar for text, though it clears the 3:1 non-text bar fine
 - Purple Secondary: `#753991` - submit buttons, important actions
 - Dark Navy: `#032147` - main headings
-- Gray Text: `#888888` - supporting text, labels
+- Gray Text: `#6b6b6b` - supporting text, labels (was `#888888`, which is 3.54:1 on white,
+  below the 4.5:1 AA bar; darkened until it cleared AA)
 
 ## Coding standards
 

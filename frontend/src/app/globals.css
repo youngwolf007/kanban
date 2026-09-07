@@ -3,9 +3,14 @@
 :root {
   --accent-yellow: #ecad0a;
   --primary-blue: #209dd7;
+  /* Same hue as --primary-blue, darkened until it clears 4.5:1 on white. Use this
+     for text; --primary-blue itself only clears the 3:1 non-text/UI-component bar. */
+  --primary-blue-text: #0e7490;
   --secondary-purple: #753991;
   --navy-dark: #032147;
-  --gray-text: #888888;
+  /* #888888 (the documented palette value) is 3.54:1 on white, below the 4.5:1 AA
+     text bar. Darkened to the point it clears AA while staying a supporting gray. */
+  --gray-text: #6b6b6b;
   --surface: #f7f8fb;
   --surface-strong: #ffffff;
   --stroke: rgba(3, 33, 71, 0.08);

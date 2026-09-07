@@ -15,10 +15,22 @@ import { BackgroundGlow } from "@/components/BackgroundGlow";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
+import { UndoToast } from "@/components/UndoToast";
 import { getBoard, saveBoard } from "@/lib/api";
-import { createId, moveCard, type BoardData } from "@/lib/kanban";
+import { createId, moveCard, type BoardData, type Card } from "@/lib/kanban";
 
 const RENAME_SAVE_DELAY = 500;
+// Long enough to read the toast and react, short enough not to linger.
+const UNDO_WINDOW = 6000;
+// A newly added card stays highlighted this long, long enough to notice a card that
+// landed below the fold, short enough to read as feedback rather than decoration.
+const HIGHLIGHT_DURATION = 1600;
+
+type DeletedCard = {
+  card: Card;
+  columnId: string;
+  index: number;
+};
 
 type KanbanBoardProps = {
   username?: string;
@@ -29,8 +41,12 @@ export const KanbanBoard = ({ username, onSignOut }: KanbanBoardProps = {}) => {
   const [board, setBoard] = useState<BoardData | null>(null);
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [deletedCard, setDeletedCard] = useState<DeletedCard | null>(null);
+  const [highlightedCardId, setHighlightedCardId] = useState<string | null>(null);
   const renameTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingRename = useRef<BoardData | null>(null);
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -53,6 +69,12 @@ export const KanbanBoard = ({ username, onSignOut }: KanbanBoardProps = {}) => {
       // would otherwise lose the rename.
       if (pendingRename.current) {
         saveBoard(pendingRename.current).catch(() => {});
+      }
+      if (undoTimer.current) {
+        clearTimeout(undoTimer.current);
+      }
+      if (highlightTimer.current) {
+        clearTimeout(highlightTimer.current);
       }
     },
     []
@@ -165,12 +187,25 @@ export const KanbanBoard = ({ username, onSignOut }: KanbanBoardProps = {}) => {
           : column
       ),
     });
+
+    if (highlightTimer.current) {
+      clearTimeout(highlightTimer.current);
+    }
+    setHighlightedCardId(id);
+    highlightTimer.current = setTimeout(
+      () => setHighlightedCardId(null),
+      HIGHLIGHT_DURATION
+    );
   };
 
   const handleDeleteCard = (columnId: string, cardId: string) => {
     if (!board) {
       return;
     }
+    const card = board.cards[cardId];
+    const sourceColumn = board.columns.find((column) => column.id === columnId);
+    const index = sourceColumn ? sourceColumn.cardIds.indexOf(cardId) : -1;
+
     applyChange({
       ...board,
       cards: Object.fromEntries(
@@ -179,6 +214,42 @@ export const KanbanBoard = ({ username, onSignOut }: KanbanBoardProps = {}) => {
       columns: board.columns.map((column) =>
         column.id === columnId
           ? { ...column, cardIds: column.cardIds.filter((id) => id !== cardId) }
+          : column
+      ),
+    });
+
+    if (card && index !== -1) {
+      if (undoTimer.current) {
+        clearTimeout(undoTimer.current);
+      }
+      setDeletedCard({ card, columnId, index });
+      undoTimer.current = setTimeout(() => setDeletedCard(null), UNDO_WINDOW);
+    }
+  };
+
+  const handleUndoDelete = () => {
+    if (!board || !deletedCard) {
+      return;
+    }
+    if (undoTimer.current) {
+      clearTimeout(undoTimer.current);
+      undoTimer.current = null;
+    }
+    const { card, columnId, index } = deletedCard;
+    setDeletedCard(null);
+    applyChange({
+      ...board,
+      cards: { ...board.cards, [card.id]: card },
+      columns: board.columns.map((column) =>
+        column.id === columnId
+          ? {
+              ...column,
+              cardIds: [
+                ...column.cardIds.slice(0, index),
+                card.id,
+                ...column.cardIds.slice(index),
+              ],
+            }
           : column
       ),
     });
@@ -213,11 +284,16 @@ export const KanbanBoard = ({ username, onSignOut }: KanbanBoardProps = {}) => {
   const activeCard = activeCardId ? board.cards[activeCardId] : null;
 
   return (
-    <div className="relative overflow-hidden">
-      <BackgroundGlow />
+    <div className="relative">
+      {/* overflow-hidden lives on this wrapper, not the outer div: an overflow-hidden
+          ancestor is a scroll container, which breaks the header's position: sticky
+          below by resolving it against the wrong scrollport. */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <BackgroundGlow />
+      </div>
 
       <main className="relative mx-auto flex min-h-screen max-w-[1600px] flex-col gap-6 px-6 pb-16 pt-10">
-        <header className="flex flex-wrap items-start justify-between gap-6 rounded-[32px] border border-[var(--stroke)] bg-white/80 px-8 py-6 shadow-[var(--shadow)] backdrop-blur">
+        <header className="sticky top-4 z-20 flex flex-wrap items-start justify-between gap-6 rounded-[32px] border border-[var(--stroke)] bg-white/80 px-8 py-6 shadow-[var(--shadow)] backdrop-blur">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[var(--gray-text)]">
               Single Board Kanban
@@ -260,7 +336,7 @@ export const KanbanBoard = ({ username, onSignOut }: KanbanBoardProps = {}) => {
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <section className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          <section className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 min-[1152px]:grid-cols-4 xl:grid-cols-5">
             {board.columns.map((column) => (
               <KanbanColumn
                 key={column.id}
@@ -270,6 +346,7 @@ export const KanbanBoard = ({ username, onSignOut }: KanbanBoardProps = {}) => {
                 onAddCard={handleAddCard}
                 onDeleteCard={handleDeleteCard}
                 onEditCard={handleEditCard}
+                highlightedCardId={highlightedCardId}
               />
             ))}
           </section>
@@ -282,6 +359,13 @@ export const KanbanBoard = ({ username, onSignOut }: KanbanBoardProps = {}) => {
           </DragOverlay>
         </DndContext>
       </main>
+
+      {deletedCard && (
+        <UndoToast
+          message={`Deleted "${deletedCard.card.title}"`}
+          onUndo={handleUndoDelete}
+        />
+      )}
 
       <ChatSidebar onBoardChange={adoptBoardFromAi} />
     </div>

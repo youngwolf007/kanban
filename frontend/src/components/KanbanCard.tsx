@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import clsx from "clsx";
@@ -8,9 +8,10 @@ type KanbanCardProps = {
   card: Card;
   onDelete: (cardId: string) => void;
   onEdit: (cardId: string, title: string, details: string) => void;
+  isHighlighted?: boolean;
 };
 
-export const KanbanCard = ({ card, onDelete, onEdit }: KanbanCardProps) => {
+export const KanbanCard = ({ card, onDelete, onEdit, isHighlighted }: KanbanCardProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState({ title: card.title, details: card.details });
   const {
@@ -27,6 +28,20 @@ export const KanbanCard = ({ card, onDelete, onEdit }: KanbanCardProps) => {
     transform: CSS.Transform.toString(transform),
     transition,
   };
+
+  const cardRef = useRef<HTMLElement | null>(null);
+  const setCardRef = (node: HTMLElement | null) => {
+    setNodeRef(node);
+    cardRef.current = node;
+  };
+
+  // A newly added card can land below the fold. scrollIntoView is missing in jsdom,
+  // hence the optional call rather than a jsdom-side workaround.
+  useEffect(() => {
+    if (isHighlighted) {
+      cardRef.current?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
+    }
+  }, [isHighlighted]);
 
   const startEditing = () => {
     setDraft({ title: card.title, details: card.details });
@@ -92,12 +107,13 @@ export const KanbanCard = ({ card, onDelete, onEdit }: KanbanCardProps) => {
 
   return (
     <article
-      ref={setNodeRef}
+      ref={setCardRef}
       style={style}
       className={clsx(
         "rounded-2xl border border-transparent bg-white px-4 py-4 shadow-[0_12px_24px_rgba(3,33,71,0.08)]",
         "transition-all duration-150",
-        isDragging && "opacity-60 shadow-[0_18px_32px_rgba(3,33,71,0.16)]"
+        isDragging && "opacity-60 shadow-[0_18px_32px_rgba(3,33,71,0.16)]",
+        isHighlighted && "ring-2 ring-[var(--accent-yellow)]"
       )}
       data-testid={`card-${card.id}`}
     >
@@ -111,7 +127,7 @@ export const KanbanCard = ({ card, onDelete, onEdit }: KanbanCardProps) => {
           {...attributes}
           {...listeners}
           aria-label={`Drag ${card.title}`}
-          className="mt-1 shrink-0 cursor-grab touch-none rounded-md p-1 text-[var(--gray-text)] transition hover:text-[var(--navy-dark)]"
+          className="mt-1 shrink-0 cursor-grab touch-none rounded-md p-1.5 text-[var(--gray-text)] transition hover:text-[var(--navy-dark)]"
         >
           <svg aria-hidden="true" viewBox="0 0 10 16" className="h-4 w-3 fill-current">
             <circle cx="3" cy="3" r="1.3" />

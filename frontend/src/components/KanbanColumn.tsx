@@ -13,6 +13,7 @@ type KanbanColumnProps = {
   onAddCard: (columnId: string, title: string, details: string) => void;
   onDeleteCard: (columnId: string, cardId: string) => void;
   onEditCard: (cardId: string, title: string, details: string) => void;
+  highlightedCardId?: string | null;
 };
 
 export const KanbanColumn = ({
@@ -22,6 +23,7 @@ export const KanbanColumn = ({
   onAddCard,
   onDeleteCard,
   onEditCard,
+  highlightedCardId,
 }: KanbanColumnProps) => {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
   const [draft, setDraft] = useState(column.title);
@@ -60,14 +62,14 @@ export const KanbanColumn = ({
           <div className="flex items-center gap-3">
             <div className="h-2 w-10 rounded-full bg-[var(--accent-yellow)]" />
             <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
-              {cards.length} cards
+              {cards.length} {cards.length === 1 ? "card" : "cards"}
             </span>
           </div>
           <input
             value={draft}
             onChange={(event) => handleChange(event.target.value)}
             onBlur={() => setDraft(column.title)}
-            className="mt-3 w-full bg-transparent font-display text-lg font-semibold text-[var(--navy-dark)] outline-none"
+            className="-mx-2 mt-3 w-full rounded-lg border border-transparent bg-transparent px-2 py-1 font-display text-lg font-semibold text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
             aria-label={`Column title: ${column.title}`}
           />
         </div>
@@ -80,6 +82,7 @@ export const KanbanColumn = ({
               card={card}
               onDelete={(cardId) => onDeleteCard(column.id, cardId)}
               onEdit={onEditCard}
+              isHighlighted={card.id === highlightedCardId}
             />
           ))}
         </SortableContext>

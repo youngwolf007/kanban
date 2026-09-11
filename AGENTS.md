@@ -1,21 +1,27 @@
-# The Project Management MVP web app
+# The Project Management web app
 
 ## Business Requirements
 
-This project is building a Project Management App. Key features:
-- A user can sign in
-- When signed in, the user sees a Kanban board representing their project
+This project is a Project Management App. Key features:
+- A user can register an account and sign in; the seeded demo account (`user` / `password`)
+  still exists for local trials, but registration is real, not hardcoded
+- When signed in, a user sees a Kanban board representing their project, and can hold any
+  number of boards, switching between them from the header
+- A board's owner can invite other registered users to it by username; an invited member can
+  read and edit the board's content but cannot rename, delete, or invite others to it, and
+  can leave at any time
 - The Kanban board has fixed columns that can be renamed
-- The cards on the Kanban board can be moved with drag and drop, and edited
-- There is an AI chat feature in a sidebar; the AI is able to create / edit / move one or more cards
+- The cards on the Kanban board can be moved with drag and drop, edited, and carry a
+  priority, an optional due date, and free-form labels; a search box and priority filter
+  narrow what is shown
+- There is an AI chat feature in a sidebar; the AI is able to create / edit / move one or
+  more cards, including their priority, due date, and labels
 
 ## Limitations
 
-For the MVP, there will only be a user sign in (hardcoded to 'user' and 'password') but the database will support multiple users for future.
-
-For the MVP, there will only be 1 Kanban board per signed in user.
-
-For the MVP, this will run locally (in a docker container)
+This runs locally (in a Docker container). There is no email, password reset, or
+notification system, and no way to browse other users to invite beyond typing their exact
+username.
 
 ## Technical Decisions
 
@@ -27,10 +33,6 @@ For the MVP, this will run locally (in a docker container)
 - Use `openai/gpt-oss-120b` as the model
 - Use SQLLite local database for the database, creating a new db if it doesn't exist
 - Start and Stop server scripts for Mac, PC, Linux in scripts/
-
-## Starting Point
-
-A working MVP of the frontend has been built and is already in frontend. This is not yet designed for the Docker setup. It's a pure frontend-only demo.
 
 ## Color Scheme
 

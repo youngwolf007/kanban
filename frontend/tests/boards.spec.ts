@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { startFresh } from "./helpers";
+import { firstBoardId, startFresh } from "./helpers";
 
 type BoardSummary = { id: number; name: string; updatedAt: string };
 
@@ -36,6 +36,10 @@ test("creates a board, seeded with the demo content", async ({ page }) => {
 
 test("switching boards does not mix up their cards", async ({ page }) => {
   await startFresh(page);
+  // Both this board and the one created below default to the name "New board", so
+  // the original is found by id, not by text: a name-based filter would match
+  // neither once a second board shares the same default name.
+  const originalBoardId = await firstBoardId(page);
 
   // Add a card unique to the original board before creating a second one.
   const backlog = page.getByTestId("column-col-backlog");
@@ -53,14 +57,15 @@ test("switching boards does not mix up their cards", async ({ page }) => {
     page.getByTestId("column-col-backlog").getByText("Only on board one")
   ).toHaveCount(0);
 
-  // Switch back to the other board and confirm its card is still there. The name
-  // button is the row's first button, before its Rename and Delete controls.
+  // Switch back to the original board and confirm its card is still there. The
+  // name button is the row's first button, before its Share, Rename, and Delete
+  // controls.
   await page.getByTestId("board-switcher").click();
-  const otherBoard = page
-    .getByTestId("board-menu")
-    .locator('[data-testid^="board-option-"]')
-    .filter({ hasNotText: "New board" });
-  await otherBoard.locator("button").first().click();
+  await page
+    .getByTestId(`board-option-${originalBoardId}`)
+    .locator("button")
+    .first()
+    .click();
 
   await expect(
     page.getByTestId("column-col-backlog").getByText("Only on board one")

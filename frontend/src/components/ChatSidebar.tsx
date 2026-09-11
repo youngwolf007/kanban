@@ -5,10 +5,11 @@ import { sendChat, type ChatMessage } from "@/lib/api";
 import type { BoardData } from "@/lib/kanban";
 
 type ChatSidebarProps = {
+  boardId: number;
   onBoardChange: (board: BoardData) => void;
 };
 
-export const ChatSidebar = ({ onBoardChange }: ChatSidebarProps) => {
+export const ChatSidebar = ({ boardId, onBoardChange }: ChatSidebarProps) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [isPending, setIsPending] = useState(false);
@@ -17,6 +18,14 @@ export const ChatSidebar = ({ onBoardChange }: ChatSidebarProps) => {
   // board rather than sharing the row with it. See frontend/AGENTS.md.
   const [isOpen, setIsOpen] = useState(false);
   const transcript = useRef<HTMLDivElement>(null);
+
+  // The conversation is scoped to one board; switching boards starts a fresh one
+  // rather than sending another board's history as this board's context.
+  useEffect(() => {
+    setMessages([]);
+    setDraft("");
+    setError(null);
+  }, [boardId]);
 
   // Keep the newest message in view. scrollTop rather than scrollTo, which jsdom lacks.
   useEffect(() => {
@@ -42,7 +51,7 @@ export const ChatSidebar = ({ onBoardChange }: ChatSidebarProps) => {
     setIsPending(true);
 
     try {
-      const { reply, board } = await sendChat(message, history);
+      const { reply, board } = await sendChat(boardId, message, history);
       setMessages((current) => [...current, { role: "assistant", content: reply }]);
       if (board) {
         // Already stored by the backend, so this only catches the UI up.

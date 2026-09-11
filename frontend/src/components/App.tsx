@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { getSession, logout, type Session } from "@/lib/api";
-import { KanbanBoard } from "@/components/KanbanBoard";
 import { LoginForm } from "@/components/LoginForm";
+import { Workspace } from "@/components/Workspace";
 
 export const App = () => {
   const [session, setSession] = useState<Session | null>(null);
@@ -38,5 +38,5 @@ export const App = () => {
     return <LoginForm onSignedIn={setSession} />;
   }
 
-  return <KanbanBoard username={session.username} onSignOut={handleSignOut} />;
+  return <Workspace username={session.username} onSignOut={handleSignOut} />;
 };

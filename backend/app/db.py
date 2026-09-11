@@ -22,8 +22,10 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS boards (
     id INTEGER PRIMARY KEY,
-    user_id INTEGER NOT NULL UNIQUE REFERENCES users(id),
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    name TEXT NOT NULL,
     data TEXT NOT NULL,
+    created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
 """
@@ -93,30 +95,77 @@ def create_user(username: str, password: str) -> int:
         return cursor.lastrowid
 
 
-def get_board(user_id: int) -> dict | None:
-    """The user's board, or None if they have never had one."""
+def list_boards(user_id: int) -> list[sqlite3.Row]:
+    """Every board owned by the user, most recently updated first."""
+    with connect() as connection:
+        return connection.execute(
+            "SELECT id, name, updated_at FROM boards"
+            " WHERE user_id = ? ORDER BY updated_at DESC",
+            (user_id,),
+        ).fetchall()
+
+
+def get_board_summary(board_id: int, user_id: int) -> sqlite3.Row | None:
+    with connect() as connection:
+        return connection.execute(
+            "SELECT id, name, updated_at FROM boards WHERE id = ? AND user_id = ?",
+            (board_id, user_id),
+        ).fetchone()
+
+
+def create_board(user_id: int, name: str, data: dict) -> int:
+    now = datetime.now(UTC).isoformat()
+    with connect() as connection:
+        cursor = connection.execute(
+            "INSERT INTO boards (user_id, name, data, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (user_id, name, json.dumps(data), now, now),
+        )
+        assert cursor.lastrowid is not None
+        return cursor.lastrowid
+
+
+def get_board(board_id: int, user_id: int) -> dict | None:
+    """The board's data, or None if it does not exist or belongs to someone else."""
     with connect() as connection:
         row = connection.execute(
-            "SELECT data FROM boards WHERE user_id = ?", (user_id,)
+            "SELECT data FROM boards WHERE id = ? AND user_id = ?",
+            (board_id, user_id),
         ).fetchone()
     return json.loads(row["data"]) if row else None
 
 
-def save_board(user_id: int, board: dict) -> None:
-    """Replace the user's board, inserting it the first time."""
+def save_board(board_id: int, user_id: int, data: dict) -> bool:
+    """Replace the board's data. Returns False if it does not exist or is not owned."""
     with connect() as connection:
-        connection.execute(
-            """
-            INSERT INTO boards (user_id, data, updated_at) VALUES (?, ?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET data = excluded.data,
-                                               updated_at = excluded.updated_at
-            """,
-            (user_id, json.dumps(board), datetime.now(UTC).isoformat()),
+        cursor = connection.execute(
+            "UPDATE boards SET data = ?, updated_at = ? WHERE id = ? AND user_id = ?",
+            (json.dumps(data), datetime.now(UTC).isoformat(), board_id, user_id),
         )
+    return cursor.rowcount > 0
+
+
+def rename_board(board_id: int, user_id: int, name: str) -> bool:
+    """Returns False if the board does not exist or is not owned."""
+    with connect() as connection:
+        cursor = connection.execute(
+            "UPDATE boards SET name = ?, updated_at = ? WHERE id = ? AND user_id = ?",
+            (name, datetime.now(UTC).isoformat(), board_id, user_id),
+        )
+    return cursor.rowcount > 0
+
+
+def delete_board(board_id: int, user_id: int) -> bool:
+    """Returns False if the board does not exist or is not owned."""
+    with connect() as connection:
+        cursor = connection.execute(
+            "DELETE FROM boards WHERE id = ? AND user_id = ?", (board_id, user_id)
+        )
+    return cursor.rowcount > 0
 
 
 def init_db() -> None:
-    """Create the database and seed the MVP user if they are not there yet."""
+    """Create the database and seed the demo user if they are not there yet."""
     with connect() as connection:
         connection.executescript(SCHEMA)
 

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { signIn as signInOnly, startFresh } from "./helpers";
+import { firstBoardId, signIn as signInOnly, startFresh } from "./helpers";
 
 const signIn = startFresh;
 
@@ -117,7 +117,8 @@ test("the board is unchanged after signing out and back in", async ({ page }) =>
 
 test("the board comes from the api, not the bundle", async ({ page }) => {
   await signIn(page);
-  const response = await page.request.get("/api/board");
+  const boardId = await firstBoardId(page);
+  const response = await page.request.get(`/api/boards/${boardId}`);
   expect(response.status()).toBe(200);
 
   const board = await response.json();

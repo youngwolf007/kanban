@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, type RenderResult } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import type { BoardData } from "@/lib/kanban";
@@ -14,8 +14,8 @@ const chatReturning = (reply: string, board: BoardData | null = null) =>
   vi.fn(() => Promise.resolve(jsonResponse(200, { reply, board })));
 
 /** The panel starts closed, so every test opens it first. */
-const renderSidebar = async (onBoardChange = vi.fn()) => {
-  render(<ChatSidebar onBoardChange={onBoardChange} />);
+const renderSidebar = async (onBoardChange = vi.fn(), boardId = 1) => {
+  render(<ChatSidebar boardId={boardId} onBoardChange={onBoardChange} />);
   await userEvent.click(screen.getByTestId("chat-open"));
   return onBoardChange;
 };
@@ -58,6 +58,7 @@ describe("ChatSidebar", () => {
     );
     expect(fetchMock).toHaveBeenCalledWith("/api/chat", expect.anything());
     expect(lastChatRequest(fetchMock).message).toBe("How many cards?");
+    expect(lastChatRequest(fetchMock).board_id).toBe(1);
   });
 
   it("shows the user's own message", async () => {
@@ -159,7 +160,7 @@ describe("ChatSidebar", () => {
   });
 
   it("starts closed and opens on request", async () => {
-    render(<ChatSidebar onBoardChange={vi.fn()} />);
+    render(<ChatSidebar boardId={1} onBoardChange={vi.fn()} />);
 
     expect(screen.queryByTestId("chat-sidebar")).not.toBeInTheDocument();
 
@@ -176,6 +177,22 @@ describe("ChatSidebar", () => {
 
     await user.click(screen.getByTestId("chat-open"));
     expect(screen.getByTestId("chat-sidebar")).toBeInTheDocument();
+  });
+
+  it("starts a fresh conversation when the board switches", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", chatReturning("Eight."));
+    const view: RenderResult = render(
+      <ChatSidebar boardId={1} onBoardChange={vi.fn()} />
+    );
+    await user.click(screen.getByTestId("chat-open"));
+    await send(user, "How many cards?");
+    await screen.findByTestId("chat-assistant");
+
+    view.rerender(<ChatSidebar boardId={2} onBoardChange={vi.fn()} />);
+
+    expect(screen.queryByTestId("chat-user")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("chat-assistant")).not.toBeInTheDocument();
   });
 
   it("does not send a blank message", async () => {

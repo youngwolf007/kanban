@@ -20,18 +20,22 @@ src/
     page.tsx       renders App, nothing else
     globals.css    Tailwind import and the CSS custom properties for the palette
   components/
-    App.tsx                session gate: loading, login form, or board
+    App.tsx                session gate: loading, login form, or workspace
     BackgroundGlow.tsx     the two decorative gradients shared by LoginForm and KanbanBoard
-    LoginForm.tsx          username and password form, calls the auth API
-    KanbanBoard.tsx        owns all board state and every mutation handler
-    ChatSidebar.tsx        the AI chat panel, overlaid on the board
+    LoginForm.tsx          username and password form; toggles between sign in and register
+    Workspace.tsx          owns the signed-in user's board list and which one is open
+    BoardSwitcher.tsx      dropdown in the header: switch, create, rename, delete a board
+    KanbanBoard.tsx        owns one open board's state and every content mutation handler
+    ChatSidebar.tsx        the AI chat panel, overlaid on the board, scoped to one board
     KanbanColumn.tsx       one column, droppable, holds the sortable card list
     KanbanCard.tsx         one card, with a drag handle and Edit and Remove buttons
     KanbanCardPreview.tsx  non-interactive card rendered inside the DragOverlay
     NewCardForm.tsx        collapsed "Add a card" button expanding to a title/details form
+    UndoToast.tsx          "Deleted X · Undo" toast shown after a card delete
   lib/
-    kanban.ts      types, seed data, the moveCard reducer, createId
-    api.ts         fetch wrappers for the auth, board, and chat APIs
+    kanban.ts             types, seed data, the moveCard reducer, createId
+    api.ts                fetch wrappers for the auth, boards, and chat APIs
+    useOnClickOutside.ts  hook backing BoardSwitcher's click-away close
   test/
     setup.ts       jest-dom matchers
 tests/
@@ -55,26 +59,41 @@ type BoardData = { columns: Column[]; cards: Record<string, Card> };
 ```
 
 Cards are held in a flat `cards` map; each column keeps an ordered `cardIds` array. Order
-lives in the column, not on the card. This shape is what the backend will store as its JSON
-blob, so keep the two in step.
+lives in the column, not on the card. This shape is what the backend stores as one board's
+JSON blob, so keep the two in step.
 
 `initialData` is no longer the app's source of truth. The backend owns the seed, as
 `DEFAULT_BOARD` in `backend/app/models.py`, and `initialData` survives only as a test
 fixture. It is tree shaken out of the shipped bundle. If you change one, change the other.
 
+A board also has metadata outside that JSON: `BoardSummary` in `lib/api.ts`
+(`{id, name, updatedAt}`), used for listing and switching between a user's boards. Content
+(`BoardData`) and metadata (`BoardSummary`) are fetched and saved separately, matching the
+backend's split between `/api/boards/{id}` (data) and `/api/boards` /
+`/api/boards/{id}` `PATCH` (metadata).
+
 ## State
 
 `App` owns the session. It calls `/api/auth/me` once on mount and renders a loading state,
-the login form, or the board. `page.tsx` renders `App` and nothing else.
+the login form, or the workspace. `page.tsx` renders `App` and nothing else.
 
-`KanbanBoard` owns all board state. Everything else is presentational and receives
-callbacks as props. It takes optional `username` and `onSignOut` props; when `onSignOut` is
-given it renders the sign out control in the header.
+`Workspace` owns the signed-in user's board list and which board is currently open: `boards`
+(every `BoardSummary`) and `currentBoardId`. On mount it calls `GET /api/boards`; if the list
+is empty (a brand new user) it calls `POST /api/boards` once to create a first board, so
+signing in still lands straight on a board. It renders `KanbanBoard` keyed on
+`currentBoardId`, so switching boards remounts it with a clean slate rather than trying to
+reconcile one board's in-flight timers and refs against another's data. Create, rename, and
+delete all go through Workspace, which keeps `boards` in sync with the server's response;
+deleting the last board recreates one, the same as a brand new user.
 
-The board starts as `null` and is fetched from `GET /api/board` on mount, showing a loading
-state until it arrives. Every change goes through `applyChange(next, debounced?)`, which
-sets state and then `PUT`s the whole board. Column rename passes `debounced: true` so typing
-does not fire a request per keystroke; the timer is 500ms.
+`KanbanBoard` owns one open board's content state and every mutation handler for it. It
+takes `boardId` (which board), `boards` and the switch/create/rename/delete callbacks (handed
+to `BoardSwitcher`, rendered in the header), and optional `username`/`onSignOut`.
+
+The board starts as `null` and is fetched from `GET /api/boards/{boardId}` on mount, showing
+a loading state until it arrives. Every change goes through `applyChange(next, debounced?)`,
+which sets state and then `PUT`s the whole board. Column rename passes `debounced: true` so
+typing does not fire a request per keystroke; the timer is 500ms.
 
 **A waiting rename holds a snapshot, so it must never outlive a newer one.** An immediate
 save cancels it, because the board it is saving already contains the rename. On unmount the
@@ -104,10 +123,13 @@ from a prop, and what the lint rules here enforce. A blank draft is never handed
 again, so the board keeps the last usable title and the field restores it on blur.
 
 `ChatSidebar` owns the conversation: the messages, the draft, the pending flag, its own
-error, and whether it is open. `KanbanBoard` passes it one callback, `onBoardChange`. When a
-reply carries a board the sidebar hands it over and `KanbanBoard` adopts it through
-`adoptBoardFromAi` **without saving it**: `POST /api/chat` already stored it, so saving would
-rewrite bytes that had just arrived.
+error, and whether it is open. It takes `boardId` and one callback, `onBoardChange`, and
+sends `boardId` as `board_id` in every `POST /api/chat`. The conversation is scoped to one
+board: an effect keyed on `boardId` clears the messages, draft, and error when it changes,
+so switching boards starts a fresh conversation rather than sending one board's history as
+another's context. When a reply carries a board the sidebar hands it over and `KanbanBoard`
+adopts it through `adoptBoardFromAi` **without saving it**: `POST /api/chat` already stored
+it, so saving would rewrite bytes that had just arrived.
 
 `moveCard(columns, activeId, overId)` is a pure function covering three cases: reorder
 within a column, move to a specific position in another column, and drop onto a column
@@ -139,8 +161,13 @@ non-mutation, plus `createId`; `KanbanBoard.test.tsx` covers the seeded render, 
 rename and its debounce (including a rename still waiting when an AI board arrives, and
 when the component unmounts), add, delete, the card count, card editing, save-error
 handling, the new card form's validation and cancel, the blank-title guard, and AI board
-adoption; `kanban.spec.ts` covers loading, console errors, the API route, add, delete,
-rename, and a mouse-driven drag between columns.
+adoption, all driven directly with a fixed `boardId` and one-board `boards` list;
+`Workspace.test.tsx` covers first-board creation for a new user, opening straight onto an
+existing one, switching, creating, renaming, deleting (including recreating after the last
+board is deleted), and the board-list load error; `BoardSwitcher.test.tsx` covers the
+dropdown in isolation with mocked callbacks; `App.test.tsx` covers sign in, registration
+(including a taken username), and sign out; `kanban.spec.ts` covers loading, console errors,
+the API route, add, delete, rename, and a mouse-driven drag between columns.
 
 One selector trap, hit in practice:
 
@@ -174,7 +201,17 @@ Playwright.
 Components expose stable test ids that both suites rely on. Do not rename them casually:
 
 - `data-testid="login-error"` on the login form's error message
-- `data-testid="board-error"` on the board's load or save error
+- `data-testid="auth-mode-toggle"` switches the login form between sign in and register
+- `data-testid="board-error"` on the board's load or save error, or Workspace's board-list error
+- `data-testid="workspace-error"` on a create/rename/delete failure once boards are loaded
+- `data-testid="board-switcher"` the header control showing the open board's name
+- `data-testid="board-menu"` the switcher's open dropdown
+- `data-testid="board-option-{boardId}"` one board's row in the dropdown
+- `data-testid="board-create"` the dropdown's "New board" button
+- `aria-label="Rename {board name}"` starts renaming that board; the resulting field is
+  `aria-label="New name for {board name}"` — two different controls, deliberately not the
+  same label
+- `aria-label="Delete {board name}"` deletes that board immediately, no confirmation
 - `aria-label="Edit {card title}"` on each card's Edit button
 - `aria-label="Card title"` and `aria-label="Card details"` on the card edit form
 - `data-testid="column-{columnId}"` on each column

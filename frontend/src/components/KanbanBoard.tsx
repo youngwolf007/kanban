@@ -12,11 +12,12 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { BackgroundGlow } from "@/components/BackgroundGlow";
+import { BoardSwitcher } from "@/components/BoardSwitcher";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
 import { UndoToast } from "@/components/UndoToast";
-import { getBoard, saveBoard } from "@/lib/api";
+import { getBoard, saveBoard, type BoardSummary } from "@/lib/api";
 import { createId, moveCard, type BoardData, type Card } from "@/lib/kanban";
 
 const RENAME_SAVE_DELAY = 500;
@@ -33,11 +34,26 @@ type DeletedCard = {
 };
 
 type KanbanBoardProps = {
+  boardId: number;
+  boards: BoardSummary[];
   username?: string;
   onSignOut?: () => void;
+  onSwitchBoard: (boardId: number) => void;
+  onCreateBoard: () => void;
+  onRenameBoard: (boardId: number, name: string) => void;
+  onDeleteBoard: (boardId: number) => void;
 };
 
-export const KanbanBoard = ({ username, onSignOut }: KanbanBoardProps = {}) => {
+export const KanbanBoard = ({
+  boardId,
+  boards,
+  username,
+  onSignOut,
+  onSwitchBoard,
+  onCreateBoard,
+  onRenameBoard,
+  onDeleteBoard,
+}: KanbanBoardProps) => {
   const [board, setBoard] = useState<BoardData | null>(null);
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,10 +71,10 @@ export const KanbanBoard = ({ username, onSignOut }: KanbanBoardProps = {}) => {
   );
 
   useEffect(() => {
-    getBoard()
+    getBoard(boardId)
       .then(setBoard)
       .catch(() => setError("Could not load your board."));
-  }, []);
+  }, [boardId]);
 
   useEffect(
     () => () => {
@@ -68,7 +84,7 @@ export const KanbanBoard = ({ username, onSignOut }: KanbanBoardProps = {}) => {
       // Flush rather than drop: renaming a column and immediately signing out
       // would otherwise lose the rename.
       if (pendingRename.current) {
-        saveBoard(pendingRename.current).catch(() => {});
+        saveBoard(boardId, pendingRename.current).catch(() => {});
       }
       if (undoTimer.current) {
         clearTimeout(undoTimer.current);
@@ -77,17 +93,20 @@ export const KanbanBoard = ({ username, onSignOut }: KanbanBoardProps = {}) => {
         clearTimeout(highlightTimer.current);
       }
     },
-    []
+    [boardId]
   );
 
-  const persist = useCallback(async (next: BoardData) => {
-    try {
-      await saveBoard(next);
-      setError(null);
-    } catch {
-      setError("Could not save your changes.");
-    }
-  }, []);
+  const persist = useCallback(
+    async (next: BoardData) => {
+      try {
+        await saveBoard(boardId, next);
+        setError(null);
+      } catch {
+        setError("Could not save your changes.");
+      }
+    },
+    [boardId]
+  );
 
   const cancelPendingRename = useCallback(() => {
     if (renameTimer.current) {
@@ -295,9 +314,14 @@ export const KanbanBoard = ({ username, onSignOut }: KanbanBoardProps = {}) => {
       <main className="relative mx-auto flex min-h-screen max-w-[1600px] flex-col gap-6 px-6 pb-16 pt-10">
         <header className="sticky top-4 z-20 flex flex-wrap items-start justify-between gap-6 rounded-[32px] border border-[var(--stroke)] bg-white/80 px-8 py-6 shadow-[var(--shadow)] backdrop-blur">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[var(--gray-text)]">
-              Single Board Kanban
-            </p>
+            <BoardSwitcher
+              boards={boards}
+              currentBoardId={boardId}
+              onSwitch={onSwitchBoard}
+              onCreate={onCreateBoard}
+              onRename={onRenameBoard}
+              onDelete={onDeleteBoard}
+            />
             <h1 className="mt-2 font-display text-3xl font-semibold text-[var(--navy-dark)]">
               Kanban Studio
             </h1>
@@ -367,7 +391,7 @@ export const KanbanBoard = ({ username, onSignOut }: KanbanBoardProps = {}) => {
         />
       )}
 
-      <ChatSidebar onBoardChange={adoptBoardFromAi} />
+      <ChatSidebar boardId={boardId} onBoardChange={adoptBoardFromAi} />
     </div>
   );
 };

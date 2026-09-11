@@ -65,11 +65,25 @@ export const signIn = async (page: Page) => {
 };
 
 /**
- * Puts the board back to the demo state, reusing the session cookie the browser
- * context already holds. Sign in first.
+ * The signed-in user's first board, creating it the same way the app does (via the
+ * board switcher's implicit first board) if none exists yet.
+ */
+export const firstBoardId = async (page: Page): Promise<number> => {
+  const response = await page.request.get("/api/boards");
+  expect(response.status()).toBe(200);
+  const boards = await response.json();
+  return boards[0].id;
+};
+
+/**
+ * Puts the signed-in user's board back to the demo state, reusing the session
+ * cookie the browser context already holds. Sign in first.
  */
 export const resetBoard = async (page: Page) => {
-  const response = await page.request.put("/api/board", { data: DEMO_BOARD });
+  const boardId = await firstBoardId(page);
+  const response = await page.request.put(`/api/boards/${boardId}`, {
+    data: DEMO_BOARD,
+  });
   expect(response.status()).toBe(200);
 };
 

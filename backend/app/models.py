@@ -9,6 +9,7 @@ MAX_COLUMNS = 20
 MAX_CARDS = 500
 MAX_TITLE_LENGTH = 200
 MAX_DETAILS_LENGTH = 2000
+MAX_BOARD_NAME_LENGTH = 100
 
 
 class Card(BaseModel):
@@ -72,6 +73,36 @@ class BoardData(BaseModel):
             raise ValueError("column ids must be unique")
 
         return self
+
+
+class BoardSummary(BaseModel):
+    """A board without its contents, for listing and switching between boards."""
+
+    id: int
+    name: str
+    updatedAt: str
+
+
+class BoardCreate(BaseModel):
+    name: str = Field(default="New board", max_length=MAX_BOARD_NAME_LENGTH)
+
+    @field_validator("name")
+    @classmethod
+    def name_is_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Board name cannot be blank")
+        return value
+
+
+class BoardRename(BaseModel):
+    name: str = Field(max_length=MAX_BOARD_NAME_LENGTH)
+
+    @field_validator("name")
+    @classmethod
+    def name_is_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Board name cannot be blank")
+        return value
 
 
 DEFAULT_BOARD = {

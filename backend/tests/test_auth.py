@@ -103,6 +103,58 @@ class TestPasswordHashing:
         assert not verify_password("hunter2", "")
 
 
+class TestRegistration:
+    def test_registering_creates_a_signed_in_user(self, client):
+        response = client.post(
+            "/api/auth/register", json={"username": "newperson", "password": "longenough"}
+        )
+        assert response.status_code == 201
+        assert response.json() == {"username": "newperson"}
+        assert "session" in response.cookies
+
+    def test_the_new_user_can_read_their_own_session(self, client):
+        client.post(
+            "/api/auth/register", json={"username": "newperson", "password": "longenough"}
+        )
+        assert client.get("/api/auth/me").json() == {"username": "newperson"}
+
+    def test_a_taken_username_is_rejected(self, client):
+        response = client.post(
+            "/api/auth/register", json={"username": "user", "password": "longenough"}
+        )
+        assert response.status_code == 409
+
+    def test_a_short_password_is_rejected(self, client):
+        response = client.post(
+            "/api/auth/register", json={"username": "newperson", "password": "short"}
+        )
+        assert response.status_code == 422
+
+    def test_a_blank_username_is_rejected(self, client):
+        response = client.post(
+            "/api/auth/register", json={"username": "   ", "password": "longenough"}
+        )
+        assert response.status_code == 422
+
+    def test_the_registered_password_is_hashed(self, client):
+        client.post(
+            "/api/auth/register", json={"username": "newperson", "password": "longenough"}
+        )
+        user = get_user_by_username("newperson")
+        assert user["password_hash"] != "longenough"
+
+    def test_a_registered_user_can_log_in_later(self, client):
+        client.post(
+            "/api/auth/register", json={"username": "newperson", "password": "longenough"}
+        )
+        client.post("/api/auth/logout")
+
+        response = client.post(
+            "/api/auth/login", json={"username": "newperson", "password": "longenough"}
+        )
+        assert response.status_code == 200
+
+
 class TestSeeding:
     def test_the_default_user_is_created(self, client):
         assert get_user_by_username(DEFAULT_USERNAME) is not None

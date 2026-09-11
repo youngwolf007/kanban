@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.ai import AIError, ask
 from app.auth import require_user
-from app.board import load_board
+from app.boards import load_board
 from app.db import save_board
 from app.models import BoardData
 
@@ -109,6 +109,7 @@ class Message(BaseModel):
 
 
 class ChatRequest(BaseModel):
+    board_id: int
     message: str = Field(max_length=MAX_MESSAGE_LENGTH)
     history: list[Message] = []
 
@@ -184,7 +185,7 @@ def ask_for_json(messages: list[dict]) -> dict:
 def chat(
     request: ChatRequest, user: sqlite3.Row = Depends(require_user)
 ) -> ChatResponse:
-    board = load_board(user["id"])
+    board = load_board(request.board_id, user["id"])
     prompt = SYSTEM_PROMPT + json.dumps(to_model_shape(board))
     messages = [{"role": "system", "content": prompt}]
     messages += [message.model_dump() for message in request.history[-MAX_HISTORY:]]
@@ -211,5 +212,5 @@ def chat(
     if not updated.columns and not updated.cards:
         raise HTTPException(status_code=502, detail="The AI returned an invalid board")
 
-    save_board(user["id"], updated.model_dump())
+    save_board(request.board_id, user["id"], updated.model_dump())
     return ChatResponse(reply=reply or "Board updated.", board=updated)

@@ -19,3 +19,11 @@ def signed_in(client):
     )
     assert response.status_code == 200
     return client
+
+
+@pytest.fixture
+def board_id(signed_in):
+    """A fresh board, seeded with the demo content, owned by the signed-in user."""
+    response = signed_in.post("/api/boards", json={})
+    assert response.status_code == 201
+    return response.json()["id"]

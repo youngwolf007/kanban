@@ -2,13 +2,14 @@
 
 import { useState, type FormEvent } from "react";
 import { BackgroundGlow } from "@/components/BackgroundGlow";
-import { login, type Session } from "@/lib/api";
+import { login, register, type Session } from "@/lib/api";
 
 type LoginFormProps = {
   onSignedIn: (session: Session) => void;
 };
 
 export const LoginForm = ({ onSignedIn }: LoginFormProps) => {
+  const [mode, setMode] = useState<"signIn" | "register">("signIn");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -19,12 +20,21 @@ export const LoginForm = ({ onSignedIn }: LoginFormProps) => {
     setError(null);
     setIsPending(true);
     try {
-      onSignedIn(await login(username, password));
+      const session =
+        mode === "signIn"
+          ? await login(username, password)
+          : await register(username, password);
+      onSignedIn(session);
     } catch (cause) {
       setError((cause as Error).message);
     } finally {
       setIsPending(false);
     }
+  };
+
+  const switchMode = (next: "signIn" | "register") => {
+    setMode(next);
+    setError(null);
   };
 
   return (
@@ -34,13 +44,15 @@ export const LoginForm = ({ onSignedIn }: LoginFormProps) => {
       <main className="relative w-full max-w-md rounded-[32px] border border-[var(--stroke)] bg-white/85 p-10 shadow-[var(--shadow)] backdrop-blur">
         <div className="h-2 w-12 rounded-full bg-[var(--accent-yellow)]" />
         <p className="mt-6 text-xs font-semibold uppercase tracking-[0.35em] text-[var(--gray-text)]">
-          Single Board Kanban
+          Project Workspace
         </p>
         <h1 className="mt-3 font-display text-3xl font-semibold text-[var(--navy-dark)]">
           Kanban Studio
         </h1>
         <p className="mt-3 text-sm leading-6 text-[var(--gray-text)]">
-          Sign in to open your board.
+          {mode === "signIn"
+            ? "Sign in to open your boards."
+            : "Create an account to start your own boards."}
         </p>
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-4">
@@ -75,10 +87,16 @@ export const LoginForm = ({ onSignedIn }: LoginFormProps) => {
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              autoComplete="current-password"
+              autoComplete={mode === "signIn" ? "current-password" : "new-password"}
+              minLength={mode === "register" ? 8 : undefined}
               required
               className="mt-2 w-full rounded-xl border border-[var(--stroke)] bg-white px-4 py-3 text-sm font-medium text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
             />
+            {mode === "register" && (
+              <p className="mt-1.5 text-xs text-[var(--gray-text)]">
+                At least 8 characters.
+              </p>
+            )}
           </div>
 
           {error && (
@@ -96,9 +114,26 @@ export const LoginForm = ({ onSignedIn }: LoginFormProps) => {
             disabled={isPending}
             className="w-full rounded-full bg-[var(--secondary-purple)] px-4 py-3 text-xs font-semibold uppercase tracking-wide text-white transition hover:brightness-110 disabled:opacity-60"
           >
-            {isPending ? "Signing in..." : "Sign in"}
+            {isPending
+              ? mode === "signIn"
+                ? "Signing in..."
+                : "Creating account..."
+              : mode === "signIn"
+                ? "Sign in"
+                : "Create account"}
           </button>
         </form>
+
+        <button
+          type="button"
+          data-testid="auth-mode-toggle"
+          onClick={() => switchMode(mode === "signIn" ? "register" : "signIn")}
+          className="mt-6 text-xs font-semibold uppercase tracking-wide text-[var(--primary-blue-text)] transition hover:opacity-80"
+        >
+          {mode === "signIn"
+            ? "Need an account? Create one"
+            : "Already have an account? Sign in"}
+        </button>
       </main>
     </div>
   );

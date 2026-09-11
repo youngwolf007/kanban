@@ -67,6 +67,27 @@ test("stays signed out after signing out and reloading", async ({ page }) => {
   await expect(page.getByLabel("Username")).toBeVisible();
 });
 
+test("registers a new account and lands on a board", async ({ page }) => {
+  const username = `playwright-${Date.now()}`;
+  await page.goto("/");
+  await page.getByTestId("auth-mode-toggle").click();
+  await page.getByLabel("Username").fill(username);
+  await page.getByLabel("Password").fill("longenoughpassword");
+  await page.getByRole("button", { name: /create account/i }).click();
+
+  await expect(page.locator('[data-testid^="column-"]')).toHaveCount(5);
+});
+
+test("a taken username is rejected on registration", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("auth-mode-toggle").click();
+  await page.getByLabel("Username").fill("user");
+  await page.getByLabel("Password").fill("longenoughpassword");
+  await page.getByRole("button", { name: /create account/i }).click();
+
+  await expect(page.getByTestId("login-error")).toContainText(/taken/i);
+});
+
 test("the session cookie is not readable from javascript", async ({ page }) => {
   await page.goto("/");
   await page.getByLabel("Username").fill("user");

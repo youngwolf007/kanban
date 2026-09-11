@@ -1,6 +1,7 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { KanbanBoard } from "@/components/KanbanBoard";
+import type { BoardSummary } from "@/lib/api";
 import { initialData, type BoardData } from "@/lib/kanban";
 
 /** Matches RENAME_SAVE_DELAY in KanbanBoard. */
@@ -15,6 +16,21 @@ const jsonResponse = (status: number, body: unknown) =>
     headers: { "Content-Type": "application/json" },
   });
 
+const oneBoard: BoardSummary[] = [
+  { id: 1, name: "My board", updatedAt: "2026-01-01T00:00:00Z" },
+];
+
+/** boardId, boards and the switcher callbacks are owned by Workspace in the app;
+ * these are no-ops here, since this suite drives KanbanBoard directly. */
+const boardShellProps = {
+  boardId: 1,
+  boards: oneBoard,
+  onSwitchBoard: vi.fn(),
+  onCreateBoard: vi.fn(),
+  onRenameBoard: vi.fn(),
+  onDeleteBoard: vi.fn(),
+};
+
 let fetchMock: ReturnType<typeof vi.fn>;
 
 const renderBoard = async (board: BoardData = initialData) => {
@@ -25,7 +41,7 @@ const renderBoard = async (board: BoardData = initialData) => {
     )
   );
   vi.stubGlobal("fetch", fetchMock);
-  const view = render(<KanbanBoard />);
+  const view = render(<KanbanBoard {...boardShellProps} />);
   await screen.findByTestId("column-col-backlog");
   return view;
 };
@@ -54,15 +70,20 @@ afterEach(() => {
 describe("KanbanBoard", () => {
   it("shows a loading state before the board arrives", () => {
     vi.stubGlobal("fetch", vi.fn().mockReturnValue(new Promise(() => {})));
-    render(<KanbanBoard />);
+    render(<KanbanBoard {...boardShellProps} />);
     expect(screen.getByRole("status")).toHaveTextContent(/loading board/i);
   });
 
   it("renders the board it loaded from the api", async () => {
     await renderBoard();
-    expect(fetchMock).toHaveBeenCalledWith("/api/board");
+    expect(fetchMock).toHaveBeenCalledWith("/api/boards/1");
     expect(screen.getAllByTestId(/column-/i)).toHaveLength(5);
     expect(screen.getByText("Align roadmap themes")).toBeInTheDocument();
+  });
+
+  it("shows the current board's name in the switcher", async () => {
+    await renderBoard();
+    expect(screen.getByTestId("board-switcher")).toHaveTextContent("My board");
   });
 
   it("renders whatever the api returns, not the local seed", async () => {
@@ -78,7 +99,7 @@ describe("KanbanBoard", () => {
 
   it("shows an error when the board cannot be loaded", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(500, {})));
-    render(<KanbanBoard />);
+    render(<KanbanBoard {...boardShellProps} />);
     expect(await screen.findByTestId("board-error")).toHaveTextContent(
       /could not load your board/i
     );
@@ -393,7 +414,7 @@ describe("KanbanBoard", () => {
         return Promise.resolve(jsonResponse(200, initialData));
       });
       vi.stubGlobal("fetch", fetchMock);
-      render(<KanbanBoard />);
+      render(<KanbanBoard {...boardShellProps} />);
       await screen.findByTestId("column-col-backlog");
     };
 
@@ -411,6 +432,19 @@ describe("KanbanBoard", () => {
 
       expect(await screen.findByText("Buy milk")).toBeInTheDocument();
       expect(within(getFirstColumn()).getByText("3 cards")).toBeInTheDocument();
+    });
+
+    it("scopes the chat request to the open board", async () => {
+      await renderWithChat("Added it.", withCard);
+
+      await ask("Add a card called Buy milk");
+      await screen.findByText("Buy milk");
+
+      const chatCall = fetchMock.mock.calls.find(
+        ([input]) => String(input) === "/api/chat"
+      );
+      const body = JSON.parse((chatCall?.[1] as RequestInit).body as string);
+      expect(body.board_id).toBe(1);
     });
 
     it("does not save a board the assistant already stored", async () => {

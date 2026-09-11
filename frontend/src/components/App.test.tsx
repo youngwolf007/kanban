@@ -9,22 +9,27 @@ const jsonResponse = (status: number, body: unknown) =>
     headers: { "Content-Type": "application/json" },
   });
 
+const oneBoard = [{ id: 1, name: "My board", updatedAt: "2026-01-01T00:00:00Z" }];
+
 /**
- * Routes by URL rather than call order, because the board component fetches
- * /api/board on its own as soon as it mounts.
+ * Routes by URL rather than call order, because the workspace and board
+ * components fetch their own data as soon as they mount.
  */
 const mockFetch = (session: { status: number; body?: unknown } | "reject") => {
   const fetchMock = vi.fn((input: unknown, init?: RequestInit) => {
     const url = String(input);
-    if (url === "/api/board") {
-      return Promise.resolve(
-        jsonResponse(200, init?.method === "PUT" ? JSON.parse(init.body as string) : initialData)
-      );
-    }
     if (url === "/api/auth/me") {
       return session === "reject"
         ? Promise.reject(new Error("offline"))
         : Promise.resolve(jsonResponse(session.status, session.body ?? {}));
+    }
+    if (url === "/api/boards") {
+      return Promise.resolve(jsonResponse(200, oneBoard));
+    }
+    if (url === "/api/boards/1") {
+      return Promise.resolve(
+        jsonResponse(200, init?.method === "PUT" ? JSON.parse(init.body as string) : initialData)
+      );
     }
     return Promise.resolve(jsonResponse(200, { username: "user" }));
   });
@@ -80,6 +85,39 @@ describe("App", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username: "user", password: "password" }),
     });
+  });
+
+  it("registers a new account and reveals the board", async () => {
+    const fetchMock = mockFetch({ status: 401 });
+
+    render(<App />);
+    await userEvent.click(
+      await screen.findByTestId("auth-mode-toggle")
+    );
+    await userEvent.type(screen.getByLabelText(/username/i), "newperson");
+    await userEvent.type(screen.getByLabelText(/password/i), "longenough");
+    await userEvent.click(screen.getByRole("button", { name: /create account/i }));
+
+    expect(await screen.findByTestId("column-col-backlog")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "newperson", password: "longenough" }),
+    });
+  });
+
+  it("shows an error when the chosen username is taken", async () => {
+    const fetchMock = mockFetch({ status: 401 });
+    fetchMock.mockImplementationOnce(() => Promise.resolve(jsonResponse(401, {})));
+    fetchMock.mockImplementationOnce(() => Promise.resolve(jsonResponse(409, {})));
+
+    render(<App />);
+    await userEvent.click(await screen.findByTestId("auth-mode-toggle"));
+    await userEvent.type(screen.getByLabelText(/username/i), "user");
+    await userEvent.type(screen.getByLabelText(/password/i), "longenough");
+    await userEvent.click(screen.getByRole("button", { name: /create account/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/username is taken/i);
   });
 
   it("shows an error when the credentials are rejected", async () => {

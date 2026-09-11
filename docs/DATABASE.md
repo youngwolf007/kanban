@@ -15,9 +15,8 @@ Reasons, in order of weight:
    With a JSON column that round trip is a read, a validate, and a write. Normalized tables
    would need a diffing layer to turn the model's answer into row inserts, updates, and
    deletes.
-3. The MVP has one board per user and no queries that look inside a board. Nothing asks
-   "which cards are in progress across all users", so the indexing that normalization buys
-   would go unused.
+3. There are no queries that look inside a board. Nothing asks "which cards are in
+   progress across all users", so the indexing that normalization buys would go unused.
 
 The cost is that the database cannot query or constrain anything inside the document.
 Validation therefore lives in the application, in Pydantic models, and is described under
@@ -35,17 +34,20 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS boards (
     id INTEGER PRIMARY KEY,
-    user_id INTEGER NOT NULL UNIQUE REFERENCES users(id),
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    name TEXT NOT NULL,
     data TEXT NOT NULL,
+    created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
 ```
 
 | Column | Notes |
 | --- | --- |
-| `boards.user_id` | `UNIQUE` enforces the MVP rule of one board per user. Dropping that one keyword is the whole change needed to allow several boards later |
+| `boards.user_id` | Not unique: a user can own any number of boards. The MVP's one-board-per-user rule was enforced by a `UNIQUE` constraint here; dropping that one keyword, plus the `name` column, is what allows several boards |
+| `boards.name` | The board's display name, shown in the board switcher. Not part of the board JSON |
 | `boards.data` | The board JSON, serialised with `json.dumps` |
-| `boards.updated_at` | ISO 8601 UTC, same format as `users.created_at` |
+| `boards.created_at`, `boards.updated_at` | ISO 8601 UTC, same format as `users.created_at` |
 
 `users` is repeated here only so the schema reads as a whole.
 
@@ -119,35 +121,48 @@ one that would render cards invisible without erroring.
 
 ## Seeding
 
-A user has no `boards` row until their board is first requested. On the first
-`GET /api/board` for a user, the backend inserts a row containing the same demo board the
-frontend ships as `initialData`: five columns (Backlog, Discovery, In Progress, Review,
-Done) and eight cards.
+A user has no `boards` rows until they create one. `POST /api/boards` inserts a row
+containing the same demo board the frontend used to ship as `initialData`: five columns
+(Backlog, Discovery, In Progress, Review, Done) and eight cards, under the given name (or
+"New board"). The frontend calls this once, automatically, the first time a signed-in user
+has an empty board list, so the experience of landing straight on a board is unchanged even
+though creation is no longer implicit on the backend.
 
-That keeps seeding lazy, so adding a user never needs a matching board write.
+That keeps registering a user cheap: `POST /api/auth/register` only ever writes to `users`.
 
 ## API contract
 
-Both routes require a signed-in user through the `require_user` dependency and act only on
-that user's board. Neither takes a board id; the session decides whose board it is.
+Every board route requires a signed-in user through the `require_user` dependency and acts
+only on boards that user owns. A board id that does not exist, or belongs to someone else,
+is a 404 either way, so existence and ownership are indistinguishable from the outside.
 
 | Route | Body | Returns |
 | --- | --- | --- |
-| `GET /api/board` | none | The board JSON, seeding it first if absent |
-| `PUT /api/board` | a whole board | The board as stored |
+| `GET /api/boards` | none | The user's boards, as `{id, name, updatedAt}`, most recently updated first |
+| `POST /api/boards` | `{name?}` | The new board's summary |
+| `GET /api/boards/{id}` | none | The board's full data |
+| `PUT /api/boards/{id}` | a whole board | The board as stored |
+| `PATCH /api/boards/{id}` | `{name}` | The board's summary with the new name |
+| `DELETE /api/boards/{id}` | none | 204, no body |
 
 | Status | Meaning |
 | --- | --- |
-| 200 | Success |
+| 200 / 201 / 204 | Success |
 | 401 | Not signed in |
-| 422 | Body is not a valid board, by the invariants and limits above |
+| 404 | The board does not exist or is not owned by the signed-in user |
+| 422 | Body is not a valid board (or name), by the invariants and limits above |
 
-`PUT` **replaces the entire board**. There are no per-card or per-column endpoints.
+`PUT` **replaces the entire board's data**. There are no per-card or per-column endpoints.
 
 Rationale: the storage is a single document, the AI returns a whole board, and the frontend
 already holds the whole board in memory. One replace endpoint serves all three. Granular
 endpoints would mean more routes, more tests, and a diffing layer, for an app whose boards
-are a few kilobytes.
+are a few kilobytes. A board's name lives outside that document (it is metadata about the
+row, not board content), which is why renaming is its own small endpoint rather than a
+`PUT` field.
+
+`POST /api/chat` also takes a `board_id` in its body now, alongside `message` and
+`history`, to say which board it is reading and changing.
 
 ### Card editing
 
@@ -161,7 +176,8 @@ a move, a rename, an add, or a delete.
 no version check and no merge.
 
 Two browser tabs editing the same board will have the later save silently overwrite the
-earlier one. This is accepted for an MVP with a single user on one board at a time.
+earlier one. This is accepted for an app with one browser tab open on any given board at a
+time.
 
 The upgrade path, if it is ever needed, is to return `updated_at` from `GET`, require it on
 `PUT`, and answer 409 when it no longer matches. That is deliberately **not** being built
@@ -197,4 +213,9 @@ Changing the shape of the board JSON is the case to think about, because old row
 old shape. While the app is pre-release, the answer is to delete the volume and reseed. If
 the shape ever needs to change against data worth keeping, add a `version` key to the JSON
 and upgrade on read.
+
+The move from one board per user to many followed the same rule: it changed `boards`'
+columns (dropped the `UNIQUE` on `user_id`, added `name` and `created_at`), not the board
+JSON, so `CREATE TABLE IF NOT EXISTS` cannot pick it up on an existing database. A `pm.db`
+from before that change needs the same delete-and-reseed treatment.
 

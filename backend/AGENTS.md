@@ -18,9 +18,9 @@ backend/
   uv.lock          committed; the Docker build installs from it with --locked
   app/
     main.py        the FastAPI app, session middleware, health route, static mount
-    auth.py        login, logout, me, and the require_user dependency
-    board.py       read and replace the signed-in user's board
-    models.py      Card, Column, BoardData, the invariants, and DEFAULT_BOARD
+    auth.py        login, logout, register, me, and the require_user dependency
+    boards.py      list, create, read, replace, rename, and delete a user's boards
+    models.py      Card, Column, BoardData, the invariants, DEFAULT_BOARD, board metadata
     db.py          SQLite access, schema, password hashing, seeding
     ai.py          the OpenRouter client
     chat.py        the AI chat route and its structured board contract
@@ -29,7 +29,7 @@ backend/
     test_health.py
     test_static.py
     test_auth.py
-    test_board.py
+    test_boards.py
     test_ai.py
     test_chat.py
 ```
@@ -39,13 +39,23 @@ backend/
 | Route | Purpose |
 | --- | --- |
 | `GET /api/health` | Returns `{"status": "ok"}` |
+| `POST /api/auth/register` | Creates an account and starts a session |
 | `POST /api/auth/login` | Validates credentials and starts a session |
 | `POST /api/auth/logout` | Clears the session |
 | `GET /api/auth/me` | The signed-in username, or 401 |
-| `GET /api/board` | The user's board, seeded on first read |
-| `PUT /api/board` | Replaces the whole board |
-| `POST /api/chat` | Asks the AI about the board, and applies any change it returns |
+| `GET /api/boards` | The signed-in user's boards, as summaries (id, name, updatedAt) |
+| `POST /api/boards` | Creates a board, seeded with the demo content |
+| `GET /api/boards/{id}` | One board's full data |
+| `PUT /api/boards/{id}` | Replaces a board's whole data |
+| `PATCH /api/boards/{id}` | Renames a board |
+| `DELETE /api/boards/{id}` | Deletes a board |
+| `POST /api/chat` | Asks the AI about a board (`board_id` in the body), and applies any change it returns |
 | `GET /` | Serves the exported Next.js site (`index.html` plus `/_next/*` assets) |
+
+Every `/api/boards/*` route checks ownership by filtering on `user_id` in the query itself
+(`WHERE id = ? AND user_id = ?`), so a board that exists but belongs to someone else looks
+identical to one that does not exist: 404 either way, never 403. That avoids leaking which
+board ids are taken.
 
 API routes are declared before the `StaticFiles` mount at `/`. Routes match in declaration
 order, so the mount must stay last or it will swallow every `/api/*` request.
@@ -136,12 +146,19 @@ One `model_validator` on `BoardData` enforces the five invariants from `docs/DAT
 keys, column ids are unique, and titles are not blank. A failure surfaces as a 422 and
 nothing is written. The same validator guards whatever the AI returns.
 
-`PUT /api/board` replaces the whole board; there are no per-card routes, and writes are last
-write wins. `save_board` is an upsert on `user_id`, so a user never has two board rows.
+`PUT /api/boards/{id}` replaces one board's whole data; there are no per-card routes, and
+writes are last write wins. A user can hold any number of boards: `boards.user_id` has no
+uniqueness constraint, unlike the MVP's one-row-per-user shape. `BoardSummary`,
+`BoardCreate`, and `BoardRename` cover the board as a named, listable entity; `BoardData`
+itself is unchanged and still only describes columns and cards.
 
 The model also caps the board's size: `MAX_COLUMNS`, `MAX_CARDS`, `MAX_TITLE_LENGTH` and
 `MAX_DETAILS_LENGTH`. The whole board goes into the AI prompt on every chat turn, so its
 size is an upstream cost, not only a storage question.
+
+A new board is not seeded lazily on first read any more, because there is no longer one
+implicit board to seed: `POST /api/boards` creates a board with the demo content
+(`DEFAULT_BOARD`) up front, and the frontend calls it when a signed-in user has none.
 
 ## The AI client
 
@@ -158,9 +175,11 @@ threadpool, so a slow AI call does not block the event loop.
 
 ## The chat route
 
-`POST /api/chat` takes `{message, history}` and returns `{reply, board}`. `board` is null
-unless the AI changed it, so the client knows whether to re-render. History is capped at
-`MAX_HISTORY` messages to keep the prompt bounded.
+`POST /api/chat` takes `{board_id, message, history}` and returns `{reply, board}`.
+`board_id` selects which of the user's boards the AI reads and writes; a board id that does
+not exist or belongs to someone else is a 404, the same as the board routes. `board` in the
+response is null unless the AI changed it, so the client knows whether to re-render. History
+is capped at `MAX_HISTORY` messages to keep the prompt bounded.
 
 `message` and each history entry are capped at `MAX_MESSAGE_LENGTH`, so an oversized request
 is refused with 422 before it costs anything upstream.

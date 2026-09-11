@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.auth import router as auth_router
-from app.board import router as board_router
+from app.boards import router as boards_router
 from app.chat import router as chat_router
 from app.db import init_db
 
@@ -28,7 +28,7 @@ app = FastAPI(title="Project Management MVP", lifespan=lifespan)
 app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, same_site="lax")
 
 app.include_router(auth_router)
-app.include_router(board_router)
+app.include_router(boards_router)
 app.include_router(chat_router)
 
 

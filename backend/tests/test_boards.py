@@ -380,6 +380,155 @@ class TestIsolation:
         assert get_board(board_id, 1) is not None
 
 
+class TestSharing:
+    def as_second_user(self, client):
+        """Switches the shared client to the already-created 'second' user."""
+        client.post("/api/auth/logout")
+        client.post(
+            "/api/auth/login", json={"username": "second", "password": "secret"}
+        )
+
+    def test_owner_sees_themself_as_owner(self, signed_in, board_id):
+        boards = signed_in.get("/api/boards").json()
+        assert boards[0]["isOwner"] is True
+        assert boards[0]["ownerUsername"] == "user"
+
+    def test_an_invited_member_can_read_and_write(self, signed_in, board_id, client):
+        create_user("second", "secret")
+        response = signed_in.post(
+            f"/api/boards/{board_id}/members", json={"username": "second"}
+        )
+        assert response.status_code == 201
+        assert [m["username"] for m in response.json()] == ["second"]
+
+        self.as_second_user(client)
+        assert client.get(f"/api/boards/{board_id}").status_code == 200
+        write = client.put(f"/api/boards/{board_id}", json=a_small_board())
+        assert write.status_code == 200
+
+    def test_the_board_appears_in_the_members_list_with_owner_info(
+        self, signed_in, board_id, client
+    ):
+        create_user("second", "secret")
+        signed_in.post(f"/api/boards/{board_id}/members", json={"username": "second"})
+
+        self.as_second_user(client)
+        boards = client.get("/api/boards").json()
+        assert len(boards) == 1
+        assert boards[0]["id"] == board_id
+        assert boards[0]["isOwner"] is False
+        assert boards[0]["ownerUsername"] == "user"
+
+    def test_a_member_cannot_rename_the_board(self, signed_in, board_id, client):
+        create_user("second", "secret")
+        signed_in.post(f"/api/boards/{board_id}/members", json={"username": "second"})
+
+        self.as_second_user(client)
+        response = client.patch(f"/api/boards/{board_id}", json={"name": "Hijacked"})
+        assert response.status_code == 403
+
+    def test_a_member_cannot_delete_the_board(self, signed_in, board_id, client):
+        create_user("second", "secret")
+        signed_in.post(f"/api/boards/{board_id}/members", json={"username": "second"})
+
+        self.as_second_user(client)
+        assert client.delete(f"/api/boards/{board_id}").status_code == 403
+
+    def test_a_member_cannot_invite_others(self, signed_in, board_id, client):
+        create_user("second", "secret")
+        create_user("third", "secret")
+        signed_in.post(f"/api/boards/{board_id}/members", json={"username": "second"})
+
+        self.as_second_user(client)
+        response = client.post(
+            f"/api/boards/{board_id}/members", json={"username": "third"}
+        )
+        assert response.status_code == 403
+
+    def test_inviting_an_unknown_username_is_a_404(self, signed_in, board_id):
+        response = signed_in.post(
+            f"/api/boards/{board_id}/members", json={"username": "ghost"}
+        )
+        assert response.status_code == 404
+
+    def test_inviting_the_owner_is_rejected(self, signed_in, board_id):
+        response = signed_in.post(
+            f"/api/boards/{board_id}/members", json={"username": "user"}
+        )
+        assert response.status_code == 409
+
+    def test_inviting_an_existing_member_twice_is_rejected(self, signed_in, board_id):
+        create_user("second", "secret")
+        signed_in.post(f"/api/boards/{board_id}/members", json={"username": "second"})
+        response = signed_in.post(
+            f"/api/boards/{board_id}/members", json={"username": "second"}
+        )
+        assert response.status_code == 409
+
+    def test_only_the_owner_can_invite_a_stranger_gets_404(self, board_id, client):
+        create_user("second", "secret")
+        client.post("/api/auth/logout")
+        client.post(
+            "/api/auth/login", json={"username": "second", "password": "secret"}
+        )
+        response = client.post(
+            f"/api/boards/{board_id}/members", json={"username": "second"}
+        )
+        assert response.status_code == 404
+
+    def test_a_member_can_leave(self, signed_in, board_id, client):
+        second_id = create_user("second", "secret")
+        signed_in.post(f"/api/boards/{board_id}/members", json={"username": "second"})
+
+        self.as_second_user(client)
+        assert client.delete(f"/api/boards/{board_id}/members/{second_id}").status_code == 204
+        assert client.get(f"/api/boards/{board_id}").status_code == 404
+
+    def test_the_owner_can_remove_a_member(self, signed_in, board_id, client):
+        second_id = create_user("second", "secret")
+        signed_in.post(f"/api/boards/{board_id}/members", json={"username": "second"})
+
+        response = signed_in.delete(f"/api/boards/{board_id}/members/{second_id}")
+        assert response.status_code == 204
+        assert signed_in.get(f"/api/boards/{board_id}/members").json() == []
+
+    def test_a_member_cannot_remove_another_member(self, signed_in, board_id, client):
+        create_user("second", "secret")
+        create_user("third", "secret")
+        signed_in.post(f"/api/boards/{board_id}/members", json={"username": "second"})
+        signed_in.post(f"/api/boards/{board_id}/members", json={"username": "third"})
+
+        self.as_second_user(client)
+        third = next(
+            m for m in signed_in.get(f"/api/boards/{board_id}/members").json()
+            if m["username"] == "third"
+        )
+        response = client.delete(f"/api/boards/{board_id}/members/{third['userId']}")
+        assert response.status_code == 403
+
+    def test_removing_a_non_member_is_a_404(self, signed_in, board_id):
+        create_user("second", "secret")
+        response = signed_in.delete(f"/api/boards/{board_id}/members/999")
+        assert response.status_code == 404
+
+    def test_listing_members_is_forbidden_to_outsiders(self, board_id, client):
+        create_user("second", "secret")
+        client.post("/api/auth/logout")
+        client.post(
+            "/api/auth/login", json={"username": "second", "password": "secret"}
+        )
+        assert client.get(f"/api/boards/{board_id}/members").status_code == 404
+
+    def test_deleting_a_board_clears_its_memberships(self, signed_in, board_id):
+        from app.db import list_board_members
+
+        create_user("second", "secret")
+        signed_in.post(f"/api/boards/{board_id}/members", json={"username": "second"})
+        signed_in.delete(f"/api/boards/{board_id}")
+
+        assert list_board_members(board_id) == []
+
+
 class TestPersistence:
     def test_the_database_file_is_created(self, signed_in, tmp_path):
         signed_in.post("/api/boards", json={})

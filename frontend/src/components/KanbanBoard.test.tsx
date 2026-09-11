@@ -17,7 +17,13 @@ const jsonResponse = (status: number, body: unknown) =>
   });
 
 const oneBoard: BoardSummary[] = [
-  { id: 1, name: "My board", updatedAt: "2026-01-01T00:00:00Z" },
+  {
+    id: 1,
+    name: "My board",
+    updatedAt: "2026-01-01T00:00:00Z",
+    isOwner: true,
+    ownerUsername: "user",
+  },
 ];
 
 /** boardId, boards and the switcher callbacks are owned by Workspace in the app;
@@ -29,6 +35,7 @@ const boardShellProps = {
   onCreateBoard: vi.fn(),
   onRenameBoard: vi.fn(),
   onDeleteBoard: vi.fn(),
+  onLeaveBoard: vi.fn(),
 };
 
 let fetchMock: ReturnType<typeof vi.fn>;

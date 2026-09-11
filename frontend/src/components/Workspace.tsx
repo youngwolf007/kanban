@@ -5,17 +5,19 @@ import {
   createBoard,
   deleteBoard,
   listBoards,
+  removeMember,
   renameBoard,
   type BoardSummary,
 } from "@/lib/api";
 import { KanbanBoard } from "@/components/KanbanBoard";
 
 type WorkspaceProps = {
+  userId: number;
   username: string;
   onSignOut: () => void;
 };
 
-export const Workspace = ({ username, onSignOut }: WorkspaceProps) => {
+export const Workspace = ({ userId, username, onSignOut }: WorkspaceProps) => {
   const [boards, setBoards] = useState<BoardSummary[] | null>(null);
   const [currentBoardId, setCurrentBoardId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -57,15 +59,8 @@ export const Workspace = ({ username, onSignOut }: WorkspaceProps) => {
     }
   };
 
-  const handleDelete = async (boardId: number) => {
-    setError(null);
-    try {
-      await deleteBoard(boardId);
-    } catch {
-      setError("Could not delete the board.");
-      return;
-    }
-
+  /** Drops a board the user no longer has access to, keeping at least one board open. */
+  const dropBoard = async (boardId: number) => {
     const remaining = (boards ?? []).filter((board) => board.id !== boardId);
 
     if (remaining.length === 0) {
@@ -85,6 +80,28 @@ export const Workspace = ({ username, onSignOut }: WorkspaceProps) => {
     if (boardId === currentBoardId) {
       setCurrentBoardId(remaining[0].id);
     }
+  };
+
+  const handleDelete = async (boardId: number) => {
+    setError(null);
+    try {
+      await deleteBoard(boardId);
+    } catch {
+      setError("Could not delete the board.");
+      return;
+    }
+    await dropBoard(boardId);
+  };
+
+  const handleLeave = async (boardId: number) => {
+    setError(null);
+    try {
+      await removeMember(boardId, userId);
+    } catch {
+      setError("Could not leave the board.");
+      return;
+    }
+    await dropBoard(boardId);
   };
 
   if (error && !boards) {
@@ -130,6 +147,7 @@ export const Workspace = ({ username, onSignOut }: WorkspaceProps) => {
         onCreateBoard={handleCreate}
         onRenameBoard={handleRename}
         onDeleteBoard={handleDelete}
+        onLeaveBoard={handleLeave}
       />
     </>
   );

@@ -42,20 +42,26 @@ backend/
 | `POST /api/auth/register` | Creates an account and starts a session |
 | `POST /api/auth/login` | Validates credentials and starts a session |
 | `POST /api/auth/logout` | Clears the session |
-| `GET /api/auth/me` | The signed-in username, or 401 |
-| `GET /api/boards` | The signed-in user's boards, as summaries (id, name, updatedAt) |
+| `GET /api/auth/me` | The signed-in user's id and username, or 401 |
+| `GET /api/boards` | The boards the user owns or is a member of, as summaries (id, name, updatedAt, isOwner, ownerUsername) |
 | `POST /api/boards` | Creates a board, seeded with the demo content |
 | `GET /api/boards/{id}` | One board's full data |
 | `PUT /api/boards/{id}` | Replaces a board's whole data |
-| `PATCH /api/boards/{id}` | Renames a board |
-| `DELETE /api/boards/{id}` | Deletes a board |
+| `PATCH /api/boards/{id}` | Renames a board (owner only) |
+| `DELETE /api/boards/{id}` | Deletes a board (owner only) |
+| `GET /api/boards/{id}/members` | The board's members (owner or member) |
+| `POST /api/boards/{id}/members` | Invites a user by username (owner only) |
+| `DELETE /api/boards/{id}/members/{userId}` | Removes a member; the owner can remove anyone, a member only themselves |
 | `POST /api/chat` | Asks the AI about a board (`board_id` in the body), and applies any change it returns |
 | `GET /` | Serves the exported Next.js site (`index.html` plus `/_next/*` assets) |
 
-Every `/api/boards/*` route checks ownership by filtering on `user_id` in the query itself
-(`WHERE id = ? AND user_id = ?`), so a board that exists but belongs to someone else looks
-identical to one that does not exist: 404 either way, never 403. That avoids leaking which
-board ids are taken.
+`GET`/`PUT` on a board, and reading its member list, are open to the owner and every
+member: `has_board_access` in `db.py` checks `boards.user_id` or a `board_members` row.
+Renaming, deleting, and inviting are owner-only: `require_ownership` in `boards.py` checks
+access first (404 for a board the user cannot see at all) then ownership (403 for a member
+who can see the board but does not own it). A board with no access at all is always 404,
+never 403, so existence and ownership are indistinguishable from the outside; once a user
+has any access, a 403 only confirms what they can already see.
 
 API routes are declared before the `StaticFiles` mount at `/`. Routes match in declaration
 order, so the mount must stay last or it will swallow every `/api/*` request.
@@ -160,6 +166,22 @@ itself is unchanged and still only describes columns and cards.
 The model also caps the board's size: `MAX_COLUMNS`, `MAX_CARDS`, `MAX_TITLE_LENGTH` and
 `MAX_DETAILS_LENGTH`. The whole board goes into the AI prompt on every chat turn, so its
 size is an upstream cost, not only a storage question.
+
+## Sharing
+
+A `board_members` row (`board_id`, `user_id`) grants one user access to one board without
+making them its owner. `boards.user_id` stays the single owner; there is no owner row in
+`board_members`, so "owner or member" is always a two-part check (`ACCESSIBLE_CLAUSE` in
+`db.py`), never a single table scan. Deleting a board deletes its `board_members` rows in
+the same call, gated on the `boards` delete actually affecting a row: doing it unconditionally
+would let a non-owner's failed delete attempt silently wipe another board's real
+memberships if `board_id`s ever collide across the check and the cleanup.
+
+`POST /api/boards/{id}/members` takes `{username}` and looks the user up with
+`get_user_by_username`, the same helper `auth.py` uses; there is no separate directory or
+invite-by-id path. Inviting the owner or an existing member is 409, an unknown username is
+404. `BoardMember` (`{userId, username}`) is deliberately smaller than a user row: it never
+carries a password hash or `created_at` to a client.
 
 A new board is not seeded lazily on first read any more, because there is no longer one
 implicit board to seed: `POST /api/boards` creates a board with the demo content

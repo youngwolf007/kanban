@@ -38,5 +38,11 @@ export const App = () => {
     return <LoginForm onSignedIn={setSession} />;
   }
 
-  return <Workspace username={session.username} onSignOut={handleSignOut} />;
+  return (
+    <Workspace
+      userId={session.id}
+      username={session.username}
+      onSignOut={handleSignOut}
+    />
+  );
 };

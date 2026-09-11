@@ -40,6 +40,13 @@ CREATE TABLE IF NOT EXISTS boards (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS board_members (
+    board_id INTEGER NOT NULL REFERENCES boards(id),
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (board_id, user_id)
+);
 ```
 
 | Column | Notes |
@@ -48,6 +55,7 @@ CREATE TABLE IF NOT EXISTS boards (
 | `boards.name` | The board's display name, shown in the board switcher. Not part of the board JSON |
 | `boards.data` | The board JSON, serialised with `json.dumps` |
 | `boards.created_at`, `boards.updated_at` | ISO 8601 UTC, same format as `users.created_at` |
+| `board_members` | One row per user granted access to a board they do not own. The owner has no row here; ownership is `boards.user_id` alone. `(board_id, user_id)` is the primary key, so inviting the same user twice is a no-op at the schema level, enforced again at the API as a 409 before it gets there |
 
 `users` is repeated here only so the schema reads as a whole.
 
@@ -157,24 +165,32 @@ That keeps registering a user cheap: `POST /api/auth/register` only ever writes 
 
 ## API contract
 
-Every board route requires a signed-in user through the `require_user` dependency and acts
-only on boards that user owns. A board id that does not exist, or belongs to someone else,
-is a 404 either way, so existence and ownership are indistinguishable from the outside.
+Every board route requires a signed-in user through the `require_user` dependency. A board
+id that does not exist, or that the signed-in user has neither ownership of nor membership
+on, is a 404 either way, so existence and access are indistinguishable from the outside.
+Reading and writing a board's content, and reading its member list, are open to the owner
+and every member; renaming, deleting, and inviting are owner-only and answer 403 for a
+member who can see the board but does not own it.
 
 | Route | Body | Returns |
 | --- | --- | --- |
-| `GET /api/boards` | none | The user's boards, as `{id, name, updatedAt}`, most recently updated first |
+| `GET /api/boards` | none | Boards owned or shared with the user, as `{id, name, updatedAt, isOwner, ownerUsername}`, most recently updated first |
 | `POST /api/boards` | `{name?}` | The new board's summary |
 | `GET /api/boards/{id}` | none | The board's full data |
 | `PUT /api/boards/{id}` | a whole board | The board as stored |
-| `PATCH /api/boards/{id}` | `{name}` | The board's summary with the new name |
-| `DELETE /api/boards/{id}` | none | 204, no body |
+| `PATCH /api/boards/{id}` | `{name}` | The board's summary with the new name (owner only) |
+| `DELETE /api/boards/{id}` | none | 204, no body (owner only) |
+| `GET /api/boards/{id}/members` | none | The board's members, as `{userId, username}[]` |
+| `POST /api/boards/{id}/members` | `{username}` | The board's members after the invite (owner only) |
+| `DELETE /api/boards/{id}/members/{userId}` | none | 204, no body. The owner can remove anyone; a member can remove only themselves |
 
 | Status | Meaning |
 | --- | --- |
 | 200 / 201 / 204 | Success |
 | 401 | Not signed in |
-| 404 | The board does not exist or is not owned by the signed-in user |
+| 403 | The signed-in user can see the board but is not its owner, on an owner-only action |
+| 404 | The board does not exist or the signed-in user has no access to it; also an unknown username on an invite, or a user id that is not currently a member on a removal |
+| 409 | Inviting the board's own owner, or a user already a member |
 | 422 | Body is not a valid board (or name), by the invariants and limits above |
 
 `PUT` **replaces the entire board's data**. There are no per-card or per-column endpoints.

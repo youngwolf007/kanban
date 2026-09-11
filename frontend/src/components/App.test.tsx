@@ -9,7 +9,15 @@ const jsonResponse = (status: number, body: unknown) =>
     headers: { "Content-Type": "application/json" },
   });
 
-const oneBoard = [{ id: 1, name: "My board", updatedAt: "2026-01-01T00:00:00Z" }];
+const oneBoard = [
+  {
+    id: 1,
+    name: "My board",
+    updatedAt: "2026-01-01T00:00:00Z",
+    isOwner: true,
+    ownerUsername: "user",
+  },
+];
 
 /**
  * Routes by URL rather than call order, because the workspace and board
@@ -31,7 +39,7 @@ const mockFetch = (session: { status: number; body?: unknown } | "reject") => {
         jsonResponse(200, init?.method === "PUT" ? JSON.parse(init.body as string) : initialData)
       );
     }
-    return Promise.resolve(jsonResponse(200, { username: "user" }));
+    return Promise.resolve(jsonResponse(200, { id: 1, username: "user" }));
   });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
@@ -54,7 +62,7 @@ describe("App", () => {
   });
 
   it("shows the board when a session already exists", async () => {
-    mockFetch({ status: 200, body: { username: "user" } });
+    mockFetch({ status: 200, body: { id: 1, username: "user" } });
 
     render(<App />);
 
@@ -157,7 +165,7 @@ describe("App", () => {
   });
 
   it("signs out and returns to the login form", async () => {
-    const fetchMock = mockFetch({ status: 200, body: { username: "user" } });
+    const fetchMock = mockFetch({ status: 200, body: { id: 1, username: "user" } });
 
     render(<App />);
     await userEvent.click(await screen.findByRole("button", { name: /sign out/i }));
@@ -170,7 +178,7 @@ describe("App", () => {
   });
 
   it("returns to the login form even when signing out fails", async () => {
-    const fetchMock = mockFetch({ status: 200, body: { username: "user" } });
+    const fetchMock = mockFetch({ status: 200, body: { id: 1, username: "user" } });
 
     render(<App />);
     const signOut = await screen.findByRole("button", { name: /sign out/i });
@@ -181,7 +189,7 @@ describe("App", () => {
   });
 
   it("shows the signed in username on the board", async () => {
-    mockFetch({ status: 200, body: { username: "user" } });
+    mockFetch({ status: 200, body: { id: 1, username: "user" } });
 
     render(<App />);
 

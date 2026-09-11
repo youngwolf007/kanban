@@ -28,6 +28,13 @@ CREATE TABLE IF NOT EXISTS boards (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS board_members (
+    board_id INTEGER NOT NULL REFERENCES boards(id),
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (board_id, user_id)
+);
 """
 
 
@@ -96,12 +103,18 @@ def create_user(username: str, password: str) -> int:
 
 
 def list_boards(user_id: int) -> list[sqlite3.Row]:
-    """Every board owned by the user, most recently updated first."""
+    """Every board the user owns or is a member of, most recently updated first."""
     with connect() as connection:
         return connection.execute(
-            "SELECT id, name, updated_at FROM boards"
-            " WHERE user_id = ? ORDER BY updated_at DESC",
-            (user_id,),
+            "SELECT b.id, b.name, b.updated_at, b.user_id AS owner_id,"
+            " u.username AS owner_username"
+            " FROM boards b JOIN users u ON u.id = b.user_id"
+            " WHERE b.user_id = :user_id OR EXISTS ("
+            "   SELECT 1 FROM board_members m"
+            "   WHERE m.board_id = b.id AND m.user_id = :user_id"
+            " )"
+            " ORDER BY b.updated_at DESC",
+            {"user_id": user_id},
         ).fetchall()
 
 
@@ -125,24 +138,96 @@ def create_board(user_id: int, name: str, data: dict) -> int:
         return cursor.lastrowid
 
 
+ACCESSIBLE_CLAUSE = (
+    "boards.user_id = :user_id OR EXISTS ("
+    "  SELECT 1 FROM board_members"
+    "  WHERE board_members.board_id = boards.id AND board_members.user_id = :user_id"
+    ")"
+)
+
+
 def get_board(board_id: int, user_id: int) -> dict | None:
-    """The board's data, or None if it does not exist or belongs to someone else."""
+    """The board's data, or None if it does not exist or the user has no access."""
     with connect() as connection:
         row = connection.execute(
-            "SELECT data FROM boards WHERE id = ? AND user_id = ?",
-            (board_id, user_id),
+            f"SELECT data FROM boards"
+            f" WHERE boards.id = :board_id AND ({ACCESSIBLE_CLAUSE})",
+            {"board_id": board_id, "user_id": user_id},
         ).fetchone()
     return json.loads(row["data"]) if row else None
 
 
 def save_board(board_id: int, user_id: int, data: dict) -> bool:
-    """Replace the board's data. Returns False if it does not exist or is not owned."""
+    """Replace the board's data. Returns False if it does not exist or is inaccessible."""
     with connect() as connection:
         cursor = connection.execute(
-            "UPDATE boards SET data = ?, updated_at = ? WHERE id = ? AND user_id = ?",
-            (json.dumps(data), datetime.now(UTC).isoformat(), board_id, user_id),
+            f"UPDATE boards SET data = :data, updated_at = :updated_at"
+            f" WHERE boards.id = :board_id AND ({ACCESSIBLE_CLAUSE})",
+            {
+                "data": json.dumps(data),
+                "updated_at": datetime.now(UTC).isoformat(),
+                "board_id": board_id,
+                "user_id": user_id,
+            },
         )
     return cursor.rowcount > 0
+
+
+def is_board_owner(board_id: int, user_id: int) -> bool:
+    with connect() as connection:
+        row = connection.execute(
+            "SELECT 1 FROM boards WHERE id = ? AND user_id = ?", (board_id, user_id)
+        ).fetchone()
+    return row is not None
+
+
+def has_board_access(board_id: int, user_id: int) -> bool:
+    """True if the user owns the board or is a member of it."""
+    with connect() as connection:
+        row = connection.execute(
+            f"SELECT 1 FROM boards"
+            f" WHERE boards.id = :board_id AND ({ACCESSIBLE_CLAUSE})",
+            {"board_id": board_id, "user_id": user_id},
+        ).fetchone()
+    return row is not None
+
+
+def add_board_member(board_id: int, user_id: int) -> None:
+    with connect() as connection:
+        connection.execute(
+            "INSERT OR IGNORE INTO board_members (board_id, user_id, created_at)"
+            " VALUES (?, ?, ?)",
+            (board_id, user_id, datetime.now(UTC).isoformat()),
+        )
+
+
+def remove_board_member(board_id: int, user_id: int) -> bool:
+    with connect() as connection:
+        cursor = connection.execute(
+            "DELETE FROM board_members WHERE board_id = ? AND user_id = ?",
+            (board_id, user_id),
+        )
+    return cursor.rowcount > 0
+
+
+def is_board_member(board_id: int, user_id: int) -> bool:
+    with connect() as connection:
+        row = connection.execute(
+            "SELECT 1 FROM board_members WHERE board_id = ? AND user_id = ?",
+            (board_id, user_id),
+        ).fetchone()
+    return row is not None
+
+
+def list_board_members(board_id: int) -> list[sqlite3.Row]:
+    """Everyone with member access to the board (not the owner), oldest first."""
+    with connect() as connection:
+        return connection.execute(
+            "SELECT u.id AS user_id, u.username, m.created_at"
+            " FROM board_members m JOIN users u ON u.id = m.user_id"
+            " WHERE m.board_id = ? ORDER BY m.created_at ASC",
+            (board_id,),
+        ).fetchall()
 
 
 def rename_board(board_id: int, user_id: int, name: str) -> bool:
@@ -161,6 +246,12 @@ def delete_board(board_id: int, user_id: int) -> bool:
         cursor = connection.execute(
             "DELETE FROM boards WHERE id = ? AND user_id = ?", (board_id, user_id)
         )
+        # Only once the board itself was actually owned and deleted: an attempt by a
+        # non-owner must not wipe another board's real membership rows.
+        if cursor.rowcount > 0:
+            connection.execute(
+                "DELETE FROM board_members WHERE board_id = ?", (board_id,)
+            )
     return cursor.rowcount > 0
 
 

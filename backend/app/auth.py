@@ -50,7 +50,7 @@ def require_user(request: Request) -> sqlite3.Row:
 
 
 @router.post("/register", status_code=201)
-def register(registration: Registration, request: Request) -> dict[str, str]:
+def register(registration: Registration, request: Request) -> dict[str, str | int]:
     if get_user_by_username(registration.username) is not None:
         raise HTTPException(status_code=409, detail="Username is taken")
 
@@ -62,11 +62,11 @@ def register(registration: Registration, request: Request) -> dict[str, str]:
         raise HTTPException(status_code=409, detail="Username is taken") from error
 
     request.session["user_id"] = user_id
-    return {"username": registration.username}
+    return {"id": user_id, "username": registration.username}
 
 
 @router.post("/login")
-def login(credentials: Credentials, request: Request) -> dict[str, str]:
+def login(credentials: Credentials, request: Request) -> dict[str, str | int]:
     user = get_user_by_username(credentials.username)
     stored = user["password_hash"] if user is not None else UNUSABLE_HASH
     # Verify first, unconditionally: short circuiting on a missing user would skip the
@@ -75,7 +75,7 @@ def login(credentials: Credentials, request: Request) -> dict[str, str]:
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
     request.session["user_id"] = user["id"]
-    return {"username": user["username"]}
+    return {"id": user["id"], "username": user["username"]}
 
 
 @router.post("/logout")
@@ -85,5 +85,5 @@ def logout(request: Request) -> dict[str, str]:
 
 
 @router.get("/me")
-def me(user: sqlite3.Row = Depends(require_user)) -> dict[str, str]:
-    return {"username": user["username"]}
+def me(user: sqlite3.Row = Depends(require_user)) -> dict[str, str | int]:
+    return {"id": user["id"], "username": user["username"]}

@@ -1,6 +1,7 @@
 import type { BoardData } from "@/lib/kanban";
 
 export type Session = {
+  id: number;
   username: string;
 };
 
@@ -62,6 +63,8 @@ export type BoardSummary = {
   id: number;
   name: string;
   updatedAt: string;
+  isOwner: boolean;
+  ownerUsername: string;
 };
 
 export const listBoards = async (): Promise<BoardSummary[]> => {
@@ -103,6 +106,52 @@ export const deleteBoard = async (boardId: number): Promise<void> => {
   const response = await fetch(`/api/boards/${boardId}`, { method: "DELETE" });
   if (!response.ok) {
     throw new Error("Could not delete the board.");
+  }
+};
+
+export type BoardMember = {
+  userId: number;
+  username: string;
+};
+
+export const listMembers = async (boardId: number): Promise<BoardMember[]> => {
+  const response = await fetch(`/api/boards/${boardId}/members`);
+  if (!response.ok) {
+    throw new Error("Could not load this board's members.");
+  }
+  return response.json();
+};
+
+export const inviteMember = async (
+  boardId: number,
+  username: string
+): Promise<BoardMember[]> => {
+  const response = await fetch(`/api/boards/${boardId}/members`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username }),
+  });
+  if (response.status === 404) {
+    throw new Error("No user with that username.");
+  }
+  if (response.status === 409) {
+    throw new Error("Already has access to this board.");
+  }
+  if (!response.ok) {
+    throw new Error("Could not invite that user.");
+  }
+  return response.json();
+};
+
+export const removeMember = async (
+  boardId: number,
+  userId: number
+): Promise<void> => {
+  const response = await fetch(`/api/boards/${boardId}/members/${userId}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    throw new Error("Could not remove that member.");
   }
 };
 

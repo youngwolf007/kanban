@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.auth import MAX_USERNAME_LENGTH
+
 # The whole board is serialised into the AI prompt on every chat turn, so its size is
 # an upstream cost as well as a storage question. Generous for one board, and far
 # below anything that would make a prompt expensive.
@@ -111,6 +113,8 @@ class BoardSummary(BaseModel):
     id: int
     name: str
     updatedAt: str
+    isOwner: bool
+    ownerUsername: str
 
 
 class BoardCreate(BaseModel):
@@ -133,6 +137,15 @@ class BoardRename(BaseModel):
         if not value.strip():
             raise ValueError("Board name cannot be blank")
         return value
+
+
+class BoardMember(BaseModel):
+    userId: int
+    username: str
+
+
+class MemberInvite(BaseModel):
+    username: str = Field(min_length=1, max_length=MAX_USERNAME_LENGTH)
 
 
 DEFAULT_BOARD = {

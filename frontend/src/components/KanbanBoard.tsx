@@ -52,6 +52,7 @@ type KanbanBoardProps = {
   onCreateBoard: () => void;
   onRenameBoard: (boardId: number, name: string) => void;
   onDeleteBoard: (boardId: number) => void;
+  onLeaveBoard: (boardId: number) => void;
 };
 
 export const KanbanBoard = ({
@@ -63,6 +64,7 @@ export const KanbanBoard = ({
   onCreateBoard,
   onRenameBoard,
   onDeleteBoard,
+  onLeaveBoard,
 }: KanbanBoardProps) => {
   const [board, setBoard] = useState<BoardData | null>(null);
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
@@ -332,6 +334,7 @@ export const KanbanBoard = ({
               onCreate={onCreateBoard}
               onRename={onRenameBoard}
               onDelete={onDeleteBoard}
+              onLeave={onLeaveBoard}
             />
             <h1 className="mt-2 font-display text-3xl font-semibold text-[var(--navy-dark)]">
               Kanban Studio

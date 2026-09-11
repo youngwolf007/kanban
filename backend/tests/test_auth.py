@@ -16,7 +16,9 @@ def test_login_with_correct_credentials_sets_a_cookie(client):
         "/api/auth/login", json={"username": "user", "password": "password"}
     )
     assert response.status_code == 200
-    assert response.json() == {"username": "user"}
+    body = response.json()
+    assert body["username"] == "user"
+    assert isinstance(body["id"], int)
     assert "session" in response.cookies
 
 
@@ -47,7 +49,9 @@ def test_me_is_unauthorised_when_signed_out(client):
 def test_me_returns_the_username_when_signed_in(signed_in):
     response = signed_in.get("/api/auth/me")
     assert response.status_code == 200
-    assert response.json() == {"username": "user"}
+    body = response.json()
+    assert body["username"] == "user"
+    assert isinstance(body["id"], int)
 
 
 def test_logout_clears_the_session(signed_in):
@@ -109,14 +113,16 @@ class TestRegistration:
             "/api/auth/register", json={"username": "newperson", "password": "longenough"}
         )
         assert response.status_code == 201
-        assert response.json() == {"username": "newperson"}
+        body = response.json()
+        assert body["username"] == "newperson"
+        assert isinstance(body["id"], int)
         assert "session" in response.cookies
 
     def test_the_new_user_can_read_their_own_session(self, client):
         client.post(
             "/api/auth/register", json={"username": "newperson", "password": "longenough"}
         )
-        assert client.get("/api/auth/me").json() == {"username": "newperson"}
+        assert client.get("/api/auth/me").json()["username"] == "newperson"
 
     def test_a_taken_username_is_rejected(self, client):
         response = client.post(

@@ -13,6 +13,8 @@ const boardSummary = (id: number, name: string) => ({
   id,
   name,
   updatedAt: "2026-01-01T00:00:00Z",
+  isOwner: true,
+  ownerUsername: "user",
 });
 
 afterEach(() => {
@@ -34,7 +36,7 @@ describe("Workspace", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<Workspace username="user" onSignOut={vi.fn()} />);
+    render(<Workspace userId={1} username="user" onSignOut={vi.fn()} />);
 
     expect(await screen.findByTestId("column-col-backlog")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
@@ -53,7 +55,7 @@ describe("Workspace", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<Workspace username="user" onSignOut={vi.fn()} />);
+    render(<Workspace userId={1} username="user" onSignOut={vi.fn()} />);
 
     expect(await screen.findByTestId("board-switcher")).toHaveTextContent("Roadmap");
     expect(fetchMock).toHaveBeenCalledWith("/api/boards/7");
@@ -79,7 +81,7 @@ describe("Workspace", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<Workspace username="user" onSignOut={vi.fn()} />);
+    render(<Workspace userId={1} username="user" onSignOut={vi.fn()} />);
     await screen.findByTestId("column-col-backlog");
 
     await userEvent.click(screen.getByTestId("board-switcher"));
@@ -102,7 +104,7 @@ describe("Workspace", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<Workspace username="user" onSignOut={vi.fn()} />);
+    render(<Workspace userId={1} username="user" onSignOut={vi.fn()} />);
     await screen.findByTestId("column-col-backlog");
 
     await userEvent.click(screen.getByTestId("board-switcher"));
@@ -126,7 +128,7 @@ describe("Workspace", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<Workspace username="user" onSignOut={vi.fn()} />);
+    render(<Workspace userId={1} username="user" onSignOut={vi.fn()} />);
     await screen.findByTestId("column-col-backlog");
 
     await userEvent.click(screen.getByTestId("board-switcher"));
@@ -155,7 +157,7 @@ describe("Workspace", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<Workspace username="user" onSignOut={vi.fn()} />);
+    render(<Workspace userId={1} username="user" onSignOut={vi.fn()} />);
     await screen.findByTestId("column-col-backlog");
 
     await userEvent.click(screen.getByTestId("board-switcher"));
@@ -186,7 +188,7 @@ describe("Workspace", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<Workspace username="user" onSignOut={vi.fn()} />);
+    render(<Workspace userId={1} username="user" onSignOut={vi.fn()} />);
     await screen.findByTestId("column-col-backlog");
 
     await userEvent.click(screen.getByTestId("board-switcher"));
@@ -200,7 +202,7 @@ describe("Workspace", () => {
   it("shows an error when the board list cannot be loaded", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(500, {})));
 
-    render(<Workspace username="user" onSignOut={vi.fn()} />);
+    render(<Workspace userId={1} username="user" onSignOut={vi.fn()} />);
 
     expect(await screen.findByTestId("board-error")).toHaveTextContent(
       /could not load your boards/i
@@ -218,7 +220,7 @@ describe("Workspace", () => {
     vi.stubGlobal("fetch", fetchMock);
     const onSignOut = vi.fn();
 
-    render(<Workspace username="atif" onSignOut={onSignOut} />);
+    render(<Workspace userId={1} username="atif" onSignOut={onSignOut} />);
     await screen.findByTestId("column-col-backlog");
 
     const header = screen.getByRole("banner");

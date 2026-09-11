@@ -24,7 +24,7 @@ src/
     BackgroundGlow.tsx     the two decorative gradients shared by LoginForm and KanbanBoard
     LoginForm.tsx          username and password form; toggles between sign in and register
     Workspace.tsx          owns the signed-in user's board list and which one is open
-    BoardSwitcher.tsx      dropdown in the header: switch, create, rename, delete a board
+    BoardSwitcher.tsx      dropdown in the header: switch, create, rename, delete, share a board
     BoardFilterBar.tsx     search text and priority filter, dims non-matching cards
     KanbanBoard.tsx        owns one open board's state and every content mutation handler
     ChatSidebar.tsx        the AI chat panel, overlaid on the board, scoped to one board
@@ -89,15 +89,23 @@ JSON blob, so keep the two in step.
 fixture. It is tree shaken out of the shipped bundle. If you change one, change the other.
 
 A board also has metadata outside that JSON: `BoardSummary` in `lib/api.ts`
-(`{id, name, updatedAt}`), used for listing and switching between a user's boards. Content
-(`BoardData`) and metadata (`BoardSummary`) are fetched and saved separately, matching the
-backend's split between `/api/boards/{id}` (data) and `/api/boards` /
-`/api/boards/{id}` `PATCH` (metadata).
+(`{id, name, updatedAt, isOwner, ownerUsername}`), used for listing and switching between a
+user's boards. Content (`BoardData`) and metadata (`BoardSummary`) are fetched and saved
+separately, matching the backend's split between `/api/boards/{id}` (data) and
+`/api/boards` / `/api/boards/{id}` `PATCH` (metadata).
+
+`isOwner` and `ownerUsername` drive `BoardSwitcher`'s per-board actions: an owned board gets
+Share, Rename, and Delete; a board someone else shared gets a "Shared by {ownerUsername}"
+label and Leave instead. `BoardMember` (`{userId, username}`) is fetched on demand — only
+when that board's Share panel is opened, via `listMembers`/`inviteMember`/`removeMember` in
+`lib/api.ts` — rather than eagerly for every board in the list.
 
 ## State
 
-`App` owns the session. It calls `/api/auth/me` once on mount and renders a loading state,
-the login form, or the workspace. `page.tsx` renders `App` and nothing else.
+`App` owns the session, as `Session` (`{id, username}`) from `/api/auth/me`, `login`, or
+`register` — all three return the same shape. It calls `/api/auth/me` once on mount and
+renders a loading state, the login form, or the workspace, passing `session.id` down as
+`userId`. `page.tsx` renders `App` and nothing else.
 
 `Workspace` owns the signed-in user's board list and which board is currently open: `boards`
 (every `BoardSummary`) and `currentBoardId`. On mount it calls `GET /api/boards`; if the list

@@ -17,6 +17,7 @@ import { BoardSwitcher } from "@/components/BoardSwitcher";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { UndoToast } from "@/components/UndoToast";
 import { getBoard, saveBoard, type BoardSummary } from "@/lib/api";
 import {
@@ -340,13 +341,13 @@ export const KanbanBoard = ({
               Kanban Studio
             </h1>
           </div>
-          {onSignOut && (
-            <div className="flex items-center gap-3">
-              {username && (
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
-                  {username}
-                </span>
-              )}
+          <div className="flex items-center gap-3">
+            {username && (
+              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
+                {username}
+              </span>
+            )}
+            {onSignOut && (
               <button
                 type="button"
                 onClick={onSignOut}
@@ -354,8 +355,9 @@ export const KanbanBoard = ({
               >
                 Sign out
               </button>
-            </div>
-          )}
+            )}
+            <ThemeToggle />
+          </div>
         </header>
 
         {error && (

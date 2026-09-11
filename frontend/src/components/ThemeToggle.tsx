@@ -1,9 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import clsx from "clsx";
 import { persistTheme, resolveTheme, setDocumentTheme, type Theme } from "@/lib/theme";
 
-export const ThemeToggle = () => {
+type ThemeToggleProps = {
+  /** Extra classes for positioning within whichever header renders this. */
+  className?: string;
+};
+
+export const ThemeToggle = ({ className }: ThemeToggleProps) => {
   // "light" until the effect below runs, so server and first client render match
   // (there is no window during Next's static-export prerender to read a real
   // preference from). The page itself never shows this default: the static
@@ -14,6 +20,9 @@ export const ThemeToggle = () => {
 
   useEffect(() => {
     const resolved = resolveTheme();
+    // Deliberately deferred past the first render to match the server-rendered
+    // default above and avoid a hydration mismatch, not a missed derivation.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTheme(resolved);
     setDocumentTheme(resolved);
   }, []);
@@ -32,7 +41,10 @@ export const ThemeToggle = () => {
       data-testid="theme-toggle"
       onClick={toggle}
       aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-      className="fixed right-4 top-4 z-50 flex h-10 w-10 items-center justify-center rounded-full border border-[var(--stroke)] bg-[var(--surface-strong)] text-[var(--navy-dark)] shadow-[var(--shadow)] transition hover:border-[var(--primary-blue)] hover:text-[var(--primary-blue)]"
+      className={clsx(
+        "flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[var(--stroke)] text-[var(--navy-dark)] transition hover:border-[var(--primary-blue)] hover:text-[var(--primary-blue)]",
+        className
+      )}
     >
       {theme === "dark" ? (
         <svg aria-hidden="true" viewBox="0 0 16 16" className="h-4 w-4 fill-current">

@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { BackgroundGlow } from "@/components/BackgroundGlow";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { login, register, type Session } from "@/lib/api";
 
 type LoginFormProps = {
@@ -42,6 +43,7 @@ export const LoginForm = ({ onSignedIn }: LoginFormProps) => {
       <BackgroundGlow />
 
       <main className="relative w-full max-w-md rounded-[32px] border border-[var(--stroke)] bg-[var(--surface-strong)]/85 p-10 shadow-[var(--shadow)] backdrop-blur">
+        <ThemeToggle className="absolute right-6 top-6" />
         <div className="h-2 w-12 rounded-full bg-[var(--accent-yellow)]" />
         <p className="mt-6 text-xs font-semibold uppercase tracking-[0.35em] text-[var(--gray-text)]">
           Project Workspace

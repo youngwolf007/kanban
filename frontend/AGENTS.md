@@ -34,7 +34,7 @@ src/
     CardMetaFields.tsx     priority/due-date/labels inputs shared by add and edit forms
     NewCardForm.tsx        collapsed "Add a card" button expanding to a full card form
     UndoToast.tsx          "Deleted X · Undo" toast shown after a card delete
-    ThemeToggle.tsx        fixed corner button that flips light/dark mode
+    ThemeToggle.tsx        header button that flips light/dark mode
   lib/
     kanban.ts             types, seed data, the moveCard reducer, createId
     api.ts                fetch wrappers for the auth, boards, and chat APIs
@@ -209,10 +209,14 @@ surface it renders on (relative luminance, same formula as the light-mode commen
 in `globals.css`), not by eye. Re-derive the ratio before changing one.
 
 The mechanism lives in `lib/theme.ts` (`getStoredTheme`, `getSystemTheme`, `resolveTheme`,
-`setDocumentTheme`, `persistTheme`) and `components/ThemeToggle.tsx`, rendered once by
-`App.tsx` so it is present on the login form and every board. The theme is an attribute,
-`data-theme` on `<html>`, not a class, and not React state that anything but the toggle's
-own icon depends on. `layout.tsx` inlines a small blocking script (`next/script` with
+`setDocumentTheme`, `persistTheme`) and `components/ThemeToggle.tsx`. `ThemeToggle` takes
+an optional `className` for positioning and is rendered twice, in each screen's own header:
+inline in `KanbanBoard`'s header next to Sign out, and absolutely positioned in the
+top-right corner of `LoginForm`'s card. There is deliberately no single global instance;
+the loading screen between them has no header, so it briefly shows neither. The theme is
+an attribute, `data-theme` on `<html>`, not a class, and not React state that anything but
+the toggle's own icon depends on. `layout.tsx` inlines a small blocking script (`next/script`
+with
 `strategy="beforeInteractive"`) that sets `data-theme` before the first paint, reading
 `localStorage` and falling back to `prefers-color-scheme`; without it the static export
 would flash light before React hydrates and corrects it. `<html>` carries
@@ -321,8 +325,9 @@ Components expose stable test ids that both suites rely on. Do not rename them c
 - `data-testid="chat-user"` and `data-testid="chat-assistant"` on message bubbles
 - `data-testid="chat-pending"` while a reply is in flight, `chat-error` when one fails
 - `aria-label="Message the assistant"` on the chat composer
-- `data-testid="theme-toggle"` the light/dark toggle, fixed top-right on every screen;
-  `aria-label` is "Switch to dark mode" or "Switch to light mode", whichever it does next
+- `data-testid="theme-toggle"` the light/dark toggle, in the header on the board and in
+  the card's top-right corner on the login form; `aria-label` is "Switch to dark mode" or
+  "Switch to light mode", whichever it does next
 
 ## The chat panel
 

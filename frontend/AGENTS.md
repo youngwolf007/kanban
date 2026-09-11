@@ -30,7 +30,8 @@ src/
     KanbanColumn.tsx       one column, droppable, holds the sortable card list
     KanbanCard.tsx         one card, with a drag handle and Edit and Remove buttons
     KanbanCardPreview.tsx  non-interactive card rendered inside the DragOverlay
-    NewCardForm.tsx        collapsed "Add a card" button expanding to a title/details form
+    CardMetaFields.tsx     priority/due-date/labels inputs shared by add and edit forms
+    NewCardForm.tsx        collapsed "Add a card" button expanding to a full card form
     UndoToast.tsx          "Deleted X · Undo" toast shown after a card delete
   lib/
     kanban.ts             types, seed data, the moveCard reducer, createId
@@ -53,10 +54,24 @@ tests/
 Defined in `src/lib/kanban.ts` and shared by every component:
 
 ```ts
-type Card = { id: string; title: string; details: string };
+type Priority = "low" | "medium" | "high";
+type Card = {
+  id: string;
+  title: string;
+  details: string;
+  priority: Priority | null;
+  dueDate: string | null; // ISO date, YYYY-MM-DD
+  labels: string[];
+};
 type Column = { id: string; title: string; cardIds: string[] };
 type BoardData = { columns: Column[]; cards: Record<string, Card> };
 ```
+
+`CardInput` (also in `lib/kanban.ts`) is the subset a form collects: every `Card` field but
+`id`. `NewCardForm` and `KanbanCard`'s edit form both emit it, and `CardMetaFields` is the
+priority/due-date/labels control group shared between them. The labels field is free text;
+`parseLabels` splits it on commas and drops blank entries, and `isOverdue` compares a
+card's `dueDate` against today to flag it in the UI.
 
 Cards are held in a flat `cards` map; each column keeps an ordered `cardIds` array. Order
 lives in the column, not on the card. This shape is what the backend stores as one board's
@@ -157,11 +172,12 @@ build stage needs network access.
 - `npm run test:all` runs both
 
 Coverage: `kanban.test.ts` covers every `moveCard` case including no-ops, unknown ids, and
-non-mutation, plus `createId`; `KanbanBoard.test.tsx` covers the seeded render, column
-rename and its debounce (including a rename still waiting when an AI board arrives, and
-when the component unmounts), add, delete, the card count, card editing, save-error
-handling, the new card form's validation and cancel, the blank-title guard, and AI board
-adoption, all driven directly with a fixed `boardId` and one-board `boards` list;
+non-mutation, plus `createId`, `parseLabels`, and `isOverdue`; `KanbanBoard.test.tsx` covers
+the seeded render, column rename and its debounce (including a rename still waiting when an
+AI board arrives, and when the component unmounts), add, delete, the card count, card
+editing, priority/due-date/labels display and editing (including the overdue flag), save-
+error handling, the new card form's validation and cancel, the blank-title guard, and AI
+board adoption, all driven directly with a fixed `boardId` and one-board `boards` list;
 `Workspace.test.tsx` covers first-board creation for a new user, opening straight onto an
 existing one, switching, creating, renaming, deleting (including recreating after the last
 board is deleted), and the board-list load error; `BoardSwitcher.test.tsx` covers the
@@ -214,6 +230,8 @@ Components expose stable test ids that both suites rely on. Do not rename them c
 - `aria-label="Delete {board name}"` deletes that board immediately, no confirmation
 - `aria-label="Edit {card title}"` on each card's Edit button
 - `aria-label="Card title"` and `aria-label="Card details"` on the card edit form
+- `aria-label="Card priority"`, `aria-label="Card due date"`, and `aria-label="Card labels"`
+  on the priority/due-date/labels controls, shared by `NewCardForm` and the card edit form
 - `data-testid="column-{columnId}"` on each column
 - `data-testid="card-{cardId}"` on each card
 - `aria-label="Column title: {column title}"` on the column title input; both suites match

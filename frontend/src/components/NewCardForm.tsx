@@ -1,22 +1,41 @@
 import { useState, type FormEvent } from "react";
+import { parseLabels, type CardInput } from "@/lib/kanban";
+import { CardMetaFields } from "@/components/CardMetaFields";
 
-const initialFormState = { title: "", details: "" };
+const initialFormState: Omit<CardInput, "labels"> = {
+  title: "",
+  details: "",
+  priority: null,
+  dueDate: null,
+};
 
 type NewCardFormProps = {
-  onAdd: (title: string, details: string) => void;
+  onAdd: (input: CardInput) => void;
 };
 
 export const NewCardForm = ({ onAdd }: NewCardFormProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [formState, setFormState] = useState(initialFormState);
+  const [labelsText, setLabelsText] = useState("");
+
+  const reset = () => {
+    setFormState(initialFormState);
+    setLabelsText("");
+  };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!formState.title.trim()) {
       return;
     }
-    onAdd(formState.title.trim(), formState.details.trim());
-    setFormState(initialFormState);
+    onAdd({
+      title: formState.title.trim(),
+      details: formState.details.trim(),
+      priority: formState.priority,
+      dueDate: formState.dueDate,
+      labels: parseLabels(labelsText),
+    });
+    reset();
     setIsOpen(false);
   };
 
@@ -42,6 +61,16 @@ export const NewCardForm = ({ onAdd }: NewCardFormProps) => {
             rows={3}
             className="w-full resize-none rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--gray-text)] outline-none transition focus:border-[var(--primary-blue)]"
           />
+          <CardMetaFields
+            priority={formState.priority}
+            dueDate={formState.dueDate}
+            labelsText={labelsText}
+            onPriorityChange={(priority) =>
+              setFormState((prev) => ({ ...prev, priority }))
+            }
+            onDueDateChange={(dueDate) => setFormState((prev) => ({ ...prev, dueDate }))}
+            onLabelsTextChange={setLabelsText}
+          />
           <div className="flex items-center gap-2">
             <button
               type="submit"
@@ -52,8 +81,8 @@ export const NewCardForm = ({ onAdd }: NewCardFormProps) => {
             <button
               type="button"
               onClick={() => {
+                reset();
                 setIsOpen(false);
-                setFormState(initialFormState);
               }}
               className="rounded-full border border-[var(--stroke)] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--gray-text)] transition hover:text-[var(--navy-dark)]"
             >

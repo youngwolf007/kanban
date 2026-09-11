@@ -18,7 +18,13 @@ import { KanbanColumn } from "@/components/KanbanColumn";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
 import { UndoToast } from "@/components/UndoToast";
 import { getBoard, saveBoard, type BoardSummary } from "@/lib/api";
-import { createId, moveCard, type BoardData, type Card } from "@/lib/kanban";
+import {
+  createId,
+  moveCard,
+  type BoardData,
+  type Card,
+  type CardInput,
+} from "@/lib/kanban";
 
 const RENAME_SAVE_DELAY = 500;
 // Long enough to read the toast and react, short enough not to linger.
@@ -189,7 +195,7 @@ export const KanbanBoard = ({
     );
   };
 
-  const handleAddCard = (columnId: string, title: string, details: string) => {
+  const handleAddCard = (columnId: string, input: CardInput) => {
     if (!board) {
       return;
     }
@@ -198,7 +204,7 @@ export const KanbanBoard = ({
       ...board,
       cards: {
         ...board.cards,
-        [id]: { id, title, details },
+        [id]: { id, ...input },
       },
       columns: board.columns.map((column) =>
         column.id === columnId
@@ -274,7 +280,7 @@ export const KanbanBoard = ({
     });
   };
 
-  const handleEditCard = (cardId: string, title: string, details: string) => {
+  const handleEditCard = (cardId: string, input: CardInput) => {
     if (!board) {
       return;
     }
@@ -282,7 +288,7 @@ export const KanbanBoard = ({
       ...board,
       cards: {
         ...board.cards,
-        [cardId]: { id: cardId, title, details },
+        [cardId]: { id: cardId, ...input },
       },
     });
   };

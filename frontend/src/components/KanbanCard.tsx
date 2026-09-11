@@ -2,18 +2,34 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import clsx from "clsx";
-import { NO_DETAILS, type Card } from "@/lib/kanban";
+import { isOverdue, NO_DETAILS, parseLabels, type Card, type CardInput } from "@/lib/kanban";
+import { CardMetaFields } from "@/components/CardMetaFields";
 
 type KanbanCardProps = {
   card: Card;
   onDelete: (cardId: string) => void;
-  onEdit: (cardId: string, title: string, details: string) => void;
+  onEdit: (cardId: string, input: CardInput) => void;
   isHighlighted?: boolean;
 };
 
+const PRIORITY_STYLES: Record<string, string> = {
+  low: "border-[var(--primary-blue)]/30 bg-[var(--primary-blue)]/10 text-[var(--primary-blue-text)]",
+  medium: "border-[var(--accent-yellow)]/50 bg-[var(--accent-yellow)]/15 text-[var(--navy-dark)]",
+  high: "border-[var(--secondary-purple)]/30 bg-[var(--secondary-purple)]/10 text-[var(--secondary-purple)]",
+};
+
+const draftFromCard = (card: Card): CardInput => ({
+  title: card.title,
+  details: card.details,
+  priority: card.priority,
+  dueDate: card.dueDate,
+  labels: card.labels,
+});
+
 export const KanbanCard = ({ card, onDelete, onEdit, isHighlighted }: KanbanCardProps) => {
   const [isEditing, setIsEditing] = useState(false);
-  const [draft, setDraft] = useState({ title: card.title, details: card.details });
+  const [draft, setDraft] = useState<CardInput>(draftFromCard(card));
+  const [labelsText, setLabelsText] = useState(card.labels.join(", "));
   const {
     attributes,
     listeners,
@@ -44,7 +60,8 @@ export const KanbanCard = ({ card, onDelete, onEdit, isHighlighted }: KanbanCard
   }, [isHighlighted]);
 
   const startEditing = () => {
-    setDraft({ title: card.title, details: card.details });
+    setDraft(draftFromCard(card));
+    setLabelsText(card.labels.join(", "));
     setIsEditing(true);
   };
 
@@ -53,7 +70,13 @@ export const KanbanCard = ({ card, onDelete, onEdit, isHighlighted }: KanbanCard
     if (!draft.title.trim()) {
       return;
     }
-    onEdit(card.id, draft.title.trim(), draft.details.trim());
+    onEdit(card.id, {
+      title: draft.title.trim(),
+      details: draft.details.trim(),
+      priority: draft.priority,
+      dueDate: draft.dueDate,
+      labels: parseLabels(labelsText),
+    });
     setIsEditing(false);
   };
 
@@ -84,6 +107,14 @@ export const KanbanCard = ({ card, onDelete, onEdit, isHighlighted }: KanbanCard
             aria-label="Card details"
             rows={3}
             className="w-full resize-none rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--gray-text)] outline-none transition focus:border-[var(--primary-blue)]"
+          />
+          <CardMetaFields
+            priority={draft.priority}
+            dueDate={draft.dueDate}
+            labelsText={labelsText}
+            onPriorityChange={(priority) => setDraft((prev) => ({ ...prev, priority }))}
+            onDueDateChange={(dueDate) => setDraft((prev) => ({ ...prev, dueDate }))}
+            onLabelsTextChange={setLabelsText}
           />
           <div className="flex items-center gap-2">
             <button
@@ -148,6 +179,40 @@ export const KanbanCard = ({ card, onDelete, onEdit, isHighlighted }: KanbanCard
           <p className="mt-2 text-sm leading-6 text-[var(--gray-text)]">
             {card.details || NO_DETAILS}
           </p>
+          {(card.priority || card.dueDate || card.labels.length > 0) && (
+            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+              {card.priority && (
+                <span
+                  className={clsx(
+                    "rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                    PRIORITY_STYLES[card.priority]
+                  )}
+                >
+                  {card.priority}
+                </span>
+              )}
+              {card.dueDate && (
+                <span
+                  className={clsx(
+                    "rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+                    isOverdue(card.dueDate)
+                      ? "border-[var(--secondary-purple)]/30 bg-[var(--secondary-purple)]/10 text-[var(--secondary-purple)]"
+                      : "border-[var(--stroke)] bg-[var(--surface)] text-[var(--gray-text)]"
+                  )}
+                >
+                  {isOverdue(card.dueDate) ? `Overdue ${card.dueDate}` : card.dueDate}
+                </span>
+              )}
+              {card.labels.map((label) => (
+                <span
+                  key={label}
+                  className="rounded-full border border-[var(--stroke)] bg-[var(--surface)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[var(--gray-text)]"
+                >
+                  {label}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <button

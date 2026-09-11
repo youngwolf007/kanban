@@ -1,7 +1,12 @@
+export type Priority = "low" | "medium" | "high";
+
 export type Card = {
   id: string;
   title: string;
   details: string;
+  priority: Priority | null;
+  dueDate: string | null;
+  labels: string[];
 };
 
 export type Column = {
@@ -14,6 +19,35 @@ export type BoardData = {
   columns: Column[];
   cards: Record<string, Card>;
 };
+
+/** The fields a card's add/edit form collects, shared by NewCardForm and KanbanCard. */
+export type CardInput = {
+  title: string;
+  details: string;
+  priority: Priority | null;
+  dueDate: string | null;
+  labels: string[];
+};
+
+export const PRIORITIES: Priority[] = ["low", "medium", "high"];
+
+const LABEL_SEPARATOR = ",";
+
+/** Turns the labels field's free-text input into a trimmed, non-blank list. */
+export const parseLabels = (value: string): string[] =>
+  value
+    .split(LABEL_SEPARATOR)
+    .map((label) => label.trim())
+    .filter(Boolean);
+
+/**
+ * `today` defaults to the real date and is only overridden by tests, so calling this
+ * with one argument always reflects the current day.
+ */
+export const isOverdue = (
+  dueDate: string | null,
+  today: string = new Date().toISOString().slice(0, 10)
+): boolean => dueDate !== null && dueDate < today;
 
 /**
  * Shown for a card with no details. A fallback at render time, never written into
@@ -39,41 +73,65 @@ export const initialData: BoardData = {
       id: "card-1",
       title: "Align roadmap themes",
       details: "Draft quarterly themes with impact statements and metrics.",
+      priority: "high",
+      dueDate: "2026-09-25",
+      labels: ["roadmap", "q3"],
     },
     "card-2": {
       id: "card-2",
       title: "Gather customer signals",
       details: "Review support tags, sales notes, and churn feedback.",
+      priority: "medium",
+      dueDate: null,
+      labels: ["research"],
     },
     "card-3": {
       id: "card-3",
       title: "Prototype analytics view",
       details: "Sketch initial dashboard layout and key drill-downs.",
+      priority: "medium",
+      dueDate: null,
+      labels: [],
     },
     "card-4": {
       id: "card-4",
       title: "Refine status language",
       details: "Standardize column labels and tone across the board.",
+      priority: "low",
+      dueDate: null,
+      labels: [],
     },
     "card-5": {
       id: "card-5",
       title: "Design card layout",
       details: "Add hierarchy and spacing for scanning dense lists.",
+      priority: null,
+      dueDate: null,
+      labels: [],
     },
     "card-6": {
       id: "card-6",
       title: "QA micro-interactions",
       details: "Verify hover, focus, and loading states.",
+      priority: null,
+      dueDate: null,
+      labels: [],
     },
     "card-7": {
       id: "card-7",
       title: "Ship marketing page",
       details: "Final copy approved and asset pack delivered.",
+      priority: null,
+      dueDate: null,
+      labels: [],
     },
     "card-8": {
       id: "card-8",
       title: "Close onboarding sprint",
       details: "Document release notes and share internally.",
+      priority: null,
+      dueDate: null,
+      labels: [],
     },
   },
 };

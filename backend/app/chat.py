@@ -33,8 +33,11 @@ CARD_SCHEMA = {
         "id": {"type": "string"},
         "title": {"type": "string"},
         "details": {"type": "string"},
+        "priority": {"type": ["string", "null"], "enum": ["low", "medium", "high", None]},
+        "dueDate": {"type": ["string", "null"], "description": "ISO date YYYY-MM-DD"},
+        "labels": {"type": "array", "items": {"type": "string"}},
     },
-    "required": ["id", "title", "details"],
+    "required": ["id", "title", "details", "priority", "dueDate", "labels"],
     "additionalProperties": False,
 }
 
@@ -90,6 +93,10 @@ Nothing changes unless you return a board. Saying you added, moved, renamed or d
 something while `board` is null is a lie: the board is left exactly as it was. If your
 reply describes a change, `board` must carry the full updated board.
 
+Each card also carries priority (one of "low", "medium", "high", or null), dueDate (an ISO
+date "YYYY-MM-DD", or null), and labels (a list of short tags, default empty). Preserve
+these for any card you are not asked to change.
+
 Rules the board must obey, or the change is refused:
 - Keep the id of every column and card that already exists.
 - Give a new card an id that is not already taken, such as card-9.
@@ -97,6 +104,7 @@ Rules the board must obey, or the change is refused:
   exactly one column's cardIds.
 - A card's own id field must match the id used in cardIds.
 - Titles cannot be empty. Details may be.
+- priority must be "low", "medium", "high", or null. dueDate must be an ISO date or null.
 - Do not add or remove columns unless you are asked to.
 
 The current board:

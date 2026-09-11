@@ -1,4 +1,6 @@
 from collections import Counter
+from datetime import date
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -10,12 +12,19 @@ MAX_CARDS = 500
 MAX_TITLE_LENGTH = 200
 MAX_DETAILS_LENGTH = 2000
 MAX_BOARD_NAME_LENGTH = 100
+MAX_LABELS = 10
+MAX_LABEL_LENGTH = 30
+
+Priority = Literal["low", "medium", "high"]
 
 
 class Card(BaseModel):
     id: str
     title: str = Field(max_length=MAX_TITLE_LENGTH)
     details: str = Field(default="", max_length=MAX_DETAILS_LENGTH)
+    priority: Priority | None = None
+    dueDate: str | None = Field(default=None, max_length=10)
+    labels: list[str] = Field(default_factory=list, max_length=MAX_LABELS)
 
     @field_validator("title")
     @classmethod
@@ -23,6 +32,27 @@ class Card(BaseModel):
         if not value.strip():
             raise ValueError("Card title cannot be blank")
         return value
+
+    @field_validator("dueDate")
+    @classmethod
+    def due_date_is_iso(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        try:
+            date.fromisoformat(value)
+        except ValueError as error:
+            raise ValueError("dueDate must be an ISO date (YYYY-MM-DD)") from error
+        return value
+
+    @field_validator("labels")
+    @classmethod
+    def labels_are_clean(cls, value: list[str]) -> list[str]:
+        cleaned = [label.strip() for label in value]
+        if any(not label for label in cleaned):
+            raise ValueError("Labels cannot be blank")
+        if any(len(label) > MAX_LABEL_LENGTH for label in cleaned):
+            raise ValueError(f"Labels cannot exceed {MAX_LABEL_LENGTH} characters")
+        return cleaned
 
 
 class Column(BaseModel):
@@ -118,21 +148,33 @@ DEFAULT_BOARD = {
             "id": "card-1",
             "title": "Align roadmap themes",
             "details": "Draft quarterly themes with impact statements and metrics.",
+            "priority": "high",
+            "dueDate": "2026-09-25",
+            "labels": ["roadmap", "q3"],
         },
         "card-2": {
             "id": "card-2",
             "title": "Gather customer signals",
             "details": "Review support tags, sales notes, and churn feedback.",
+            "priority": "medium",
+            "dueDate": None,
+            "labels": ["research"],
         },
         "card-3": {
             "id": "card-3",
             "title": "Prototype analytics view",
             "details": "Sketch initial dashboard layout and key drill-downs.",
+            "priority": "medium",
+            "dueDate": None,
+            "labels": [],
         },
         "card-4": {
             "id": "card-4",
             "title": "Refine status language",
             "details": "Standardize column labels and tone across the board.",
+            "priority": "low",
+            "dueDate": None,
+            "labels": [],
         },
         "card-5": {
             "id": "card-5",

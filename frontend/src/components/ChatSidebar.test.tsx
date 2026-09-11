@@ -125,7 +125,16 @@ describe("ChatSidebar", () => {
     const user = userEvent.setup();
     const board: BoardData = {
       columns: [{ id: "col-a", title: "Backlog", cardIds: ["card-9"] }],
-      cards: { "card-9": { id: "card-9", title: "Buy milk", details: "." } },
+      cards: {
+        "card-9": {
+          id: "card-9",
+          title: "Buy milk",
+          details: ".",
+          priority: null,
+          dueDate: null,
+          labels: [],
+        },
+      },
     };
     vi.stubGlobal("fetch", chatReturning("Added it.", board));
     const onBoardChange = await renderSidebar();

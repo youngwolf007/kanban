@@ -109,6 +109,24 @@ class TestAnswering:
         board = ai.response_format["json_schema"]["schema"]["properties"]["board"]
         assert board["properties"]["cards"]["type"] == "array"
 
+    def test_card_schema_includes_priority_due_date_and_labels(
+        self, signed_in, board_id, ai
+    ):
+        signed_in.post(
+            "/api/chat", json={"board_id": board_id, "message": "How many cards?"}
+        )
+
+        board = ai.response_format["json_schema"]["schema"]["properties"]["board"]
+        card_schema = board["properties"]["cards"]["items"]
+        assert set(card_schema["required"]) == {
+            "id",
+            "title",
+            "details",
+            "priority",
+            "dueDate",
+            "labels",
+        }
+
 
 class TestHistory:
     def test_history_is_included_in_the_request(self, signed_in, board_id, ai):
@@ -172,6 +190,22 @@ class TestChangingTheBoard:
         stored = signed_in.get(f"/api/boards/{board_id}").json()
         assert stored["cards"]["card-9"]["title"] == "Buy milk"
         assert "card-9" in stored["columns"][0]["cardIds"]
+
+    def test_priority_due_date_and_labels_are_persisted(self, signed_in, board_id, ai):
+        board = signed_in.get(f"/api/boards/{board_id}").json()
+        board["cards"]["card-1"]["priority"] = "high"
+        board["cards"]["card-1"]["dueDate"] = "2026-10-01"
+        board["cards"]["card-1"]["labels"] = ["urgent"]
+        ai.response = {"reply": "Updated it.", "board": model_shape(board)}
+
+        signed_in.post(
+            "/api/chat", json={"board_id": board_id, "message": "Mark it urgent"}
+        )
+
+        stored = signed_in.get(f"/api/boards/{board_id}").json()
+        assert stored["cards"]["card-1"]["priority"] == "high"
+        assert stored["cards"]["card-1"]["dueDate"] == "2026-10-01"
+        assert stored["cards"]["card-1"]["labels"] == ["urgent"]
 
     def test_a_move_is_persisted(self, signed_in, board_id, ai):
         board = signed_in.get(f"/api/boards/{board_id}").json()

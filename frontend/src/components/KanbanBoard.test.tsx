@@ -89,7 +89,16 @@ describe("KanbanBoard", () => {
   it("renders whatever the api returns, not the local seed", async () => {
     await renderBoard({
       columns: [{ id: "col-backlog", title: "Only column", cardIds: ["card-x"] }],
-      cards: { "card-x": { id: "card-x", title: "From the server", details: "." } },
+      cards: {
+        "card-x": {
+          id: "card-x",
+          title: "From the server",
+          details: ".",
+          priority: null,
+          dueDate: null,
+          labels: [],
+        },
+      },
     });
 
     expect(screen.getAllByTestId(/column-/i)).toHaveLength(1);
@@ -156,6 +165,9 @@ describe("KanbanBoard", () => {
         id: "card-1",
         title: "Edited title",
         details: "Edited details",
+        priority: "high",
+        dueDate: "2026-09-25",
+        labels: ["roadmap", "q3"],
       });
     });
 
@@ -352,6 +364,89 @@ describe("KanbanBoard", () => {
     expect(added?.details).toBe("");
   });
 
+  describe("card metadata", () => {
+    it("shows the priority, due date, and labels already on a card", async () => {
+      await renderBoard();
+      const card = screen.getByTestId("card-card-1");
+
+      expect(within(card).getByText("high")).toBeInTheDocument();
+      expect(within(card).getByText("2026-09-25")).toBeInTheDocument();
+      expect(within(card).getByText("roadmap")).toBeInTheDocument();
+      expect(within(card).getByText("q3")).toBeInTheDocument();
+    });
+
+    it("flags a past due date as overdue", async () => {
+      await renderBoard({
+        ...initialData,
+        cards: {
+          ...initialData.cards,
+          "card-1": { ...initialData.cards["card-1"], dueDate: "2000-01-01" },
+        },
+      });
+
+      expect(
+        within(screen.getByTestId("card-card-1")).getByText(/overdue 2000-01-01/i)
+      ).toBeInTheDocument();
+    });
+
+    it("sets priority, due date, and labels on a new card", async () => {
+      await renderBoard();
+      const column = getFirstColumn();
+      await userEvent.click(
+        within(column).getByRole("button", { name: /add a card/i })
+      );
+      await userEvent.type(
+        within(column).getByPlaceholderText(/card title/i),
+        "Planned work"
+      );
+      await userEvent.selectOptions(
+        within(column).getByLabelText("Card priority"),
+        "medium"
+      );
+      await userEvent.type(within(column).getByLabelText("Card due date"), "2026-11-01");
+      await userEvent.type(
+        within(column).getByLabelText("Card labels"),
+        "ops, launch"
+      );
+      await userEvent.click(
+        within(column).getByRole("button", { name: /add card/i })
+      );
+
+      await waitFor(() => expect(savesMade()).toBe(1));
+      const added = Object.values(lastSavedBoard().cards).find(
+        (card) => card.title === "Planned work"
+      );
+      expect(added).toMatchObject({
+        priority: "medium",
+        dueDate: "2026-11-01",
+        labels: ["ops", "launch"],
+      });
+    });
+
+    it("edits priority, due date, and labels on an existing card", async () => {
+      await renderBoard();
+      await userEvent.click(
+        screen.getByRole("button", { name: /edit align roadmap themes/i })
+      );
+
+      await userEvent.selectOptions(screen.getByLabelText("Card priority"), "low");
+      const dueDate = screen.getByLabelText("Card due date");
+      await userEvent.clear(dueDate);
+      await userEvent.type(dueDate, "2026-12-01");
+      const labels = screen.getByLabelText("Card labels");
+      await userEvent.clear(labels);
+      await userEvent.type(labels, "urgent");
+      await userEvent.click(screen.getByRole("button", { name: /save card/i }));
+
+      await waitFor(() => expect(savesMade()).toBe(1));
+      expect(lastSavedBoard().cards["card-1"]).toMatchObject({
+        priority: "low",
+        dueDate: "2026-12-01",
+        labels: ["urgent"],
+      });
+    });
+  });
+
   it("does not add a card when the title is only whitespace", async () => {
     await renderBoard();
     const column = getFirstColumn();
@@ -398,7 +493,14 @@ describe("KanbanBoard", () => {
       ),
       cards: {
         ...initialData.cards,
-        "card-9": { id: "card-9", title: "Buy milk", details: "From the shop" },
+        "card-9": {
+          id: "card-9",
+          title: "Buy milk",
+          details: "From the shop",
+          priority: null,
+          dueDate: null,
+          labels: [],
+        },
       },
     };
 

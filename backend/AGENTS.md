@@ -146,6 +146,11 @@ One `model_validator` on `BoardData` enforces the five invariants from `docs/DAT
 keys, column ids are unique, and titles are not blank. A failure surfaces as a 422 and
 nothing is written. The same validator guards whatever the AI returns.
 
+A card also carries `priority` (`low`/`medium`/`high`/`null`), `dueDate` (an ISO date or
+`null`), and `labels` (a capped list of short strings), each validated by a field validator
+on `Card` rather than the board-level invariant, since they describe one card in isolation.
+All three default to empty, so a board written before they existed still loads.
+
 `PUT /api/boards/{id}` replaces one board's whole data; there are no per-card routes, and
 writes are last write wins. A user can hold any number of boards: `boards.user_id` has no
 uniqueness constraint, unlike the MVP's one-row-per-user shape. `BoardSummary`,

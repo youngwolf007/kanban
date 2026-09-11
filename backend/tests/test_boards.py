@@ -9,6 +9,8 @@ from app.models import (
     MAX_CARDS,
     MAX_COLUMNS,
     MAX_DETAILS_LENGTH,
+    MAX_LABEL_LENGTH,
+    MAX_LABELS,
     MAX_TITLE_LENGTH,
 )
 
@@ -246,13 +248,56 @@ class TestValidation:
         board["cards"]["card-1"]["details"] = "x" * (MAX_DETAILS_LENGTH + 1)
         assert signed_in.put(f"/api/boards/{board_id}", json=board).status_code == 422
 
+    def test_priority_defaults_to_null(self, signed_in, board_id):
+        response = signed_in.put(f"/api/boards/{board_id}", json=a_small_board())
+        assert response.json()["cards"]["card-1"]["priority"] is None
+
+    def test_an_invalid_priority_is_rejected(self, signed_in, board_id):
+        board = a_small_board()
+        board["cards"]["card-1"]["priority"] = "urgent"
+        assert signed_in.put(f"/api/boards/{board_id}", json=board).status_code == 422
+
+    def test_a_valid_priority_is_accepted(self, signed_in, board_id):
+        board = a_small_board()
+        board["cards"]["card-1"]["priority"] = "high"
+        response = signed_in.put(f"/api/boards/{board_id}", json=board)
+        assert response.status_code == 200
+        assert response.json()["cards"]["card-1"]["priority"] == "high"
+
+    def test_a_non_iso_due_date_is_rejected(self, signed_in, board_id):
+        board = a_small_board()
+        board["cards"]["card-1"]["dueDate"] = "09/25/2026"
+        assert signed_in.put(f"/api/boards/{board_id}", json=board).status_code == 422
+
+    def test_a_valid_due_date_is_accepted(self, signed_in, board_id):
+        board = a_small_board()
+        board["cards"]["card-1"]["dueDate"] = "2026-09-25"
+        response = signed_in.put(f"/api/boards/{board_id}", json=board)
+        assert response.status_code == 200
+        assert response.json()["cards"]["card-1"]["dueDate"] == "2026-09-25"
+
+    def test_a_blank_label_is_rejected(self, signed_in, board_id):
+        board = a_small_board()
+        board["cards"]["card-1"]["labels"] = ["ok", "  "]
+        assert signed_in.put(f"/api/boards/{board_id}", json=board).status_code == 422
+
+    def test_an_over_long_label_is_rejected(self, signed_in, board_id):
+        board = a_small_board()
+        board["cards"]["card-1"]["labels"] = ["x" * (MAX_LABEL_LENGTH + 1)]
+        assert signed_in.put(f"/api/boards/{board_id}", json=board).status_code == 422
+
+    def test_too_many_labels_is_rejected(self, signed_in, board_id):
+        board = a_small_board()
+        board["cards"]["card-1"]["labels"] = [f"l{n}" for n in range(MAX_LABELS + 1)]
+        assert signed_in.put(f"/api/boards/{board_id}", json=board).status_code == 422
+
     def test_a_rejected_board_is_not_persisted(self, signed_in, board_id):
-        signed_in.put(f"/api/boards/{board_id}", json=a_small_board())
+        stored = signed_in.put(f"/api/boards/{board_id}", json=a_small_board()).json()
         broken = a_small_board()
         broken["columns"][0]["cardIds"].append("card-missing")
 
         assert signed_in.put(f"/api/boards/{board_id}", json=broken).status_code == 422
-        assert signed_in.get(f"/api/boards/{board_id}").json() == a_small_board()
+        assert signed_in.get(f"/api/boards/{board_id}").json() == stored
 
 
 class TestRenaming:

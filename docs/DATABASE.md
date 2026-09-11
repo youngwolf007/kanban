@@ -57,7 +57,15 @@ The `data` column holds exactly the frontend's `BoardData` type from
 `frontend/src/lib/kanban.ts`. The two must stay in step.
 
 ```ts
-type Card = { id: string; title: string; details: string };
+type Priority = "low" | "medium" | "high";
+type Card = {
+  id: string;
+  title: string;
+  details: string;
+  priority: Priority | null;
+  dueDate: string | null; // ISO date, YYYY-MM-DD
+  labels: string[];
+};
 type Column = { id: string; title: string; cardIds: string[] };
 type BoardData = { columns: Column[]; cards: Record<string, Card> };
 ```
@@ -75,17 +83,26 @@ type BoardData = { columns: Column[]; cards: Record<string, Card> };
     "card-1": {
       "id": "card-1",
       "title": "Align roadmap themes",
-      "details": "Draft quarterly themes with impact statements and metrics."
+      "details": "Draft quarterly themes with impact statements and metrics.",
+      "priority": "high",
+      "dueDate": "2026-09-25",
+      "labels": ["roadmap", "q3"]
     },
     "card-2": {
       "id": "card-2",
       "title": "Gather customer signals",
-      "details": "Review support tags, sales notes, and churn feedback."
+      "details": "Review support tags, sales notes, and churn feedback.",
+      "priority": "medium",
+      "dueDate": null,
+      "labels": ["research"]
     },
     "card-3": {
       "id": "card-3",
       "title": "Prototype analytics view",
-      "details": "Sketch initial dashboard layout and key drill-downs."
+      "details": "Sketch initial dashboard layout and key drill-downs.",
+      "priority": null,
+      "dueDate": null,
+      "labels": []
     }
   }
 }
@@ -96,9 +113,11 @@ is a property of the column, not of the card**. A card's position is its index i
 array. There is no `order` or `position` field, and moving a card is a change to one or two
 `cardIds` arrays.
 
-Every card carries exactly three fields, `id`, `title`, and `details`. **All three are
-user-editable**, `title` and `details` directly, and `id` only implicitly, by deleting a
-card and adding another.
+Every card carries `id`, `title`, `details`, `priority`, `dueDate`, and `labels`. All but
+`id` are user-editable, `id` only implicitly, by deleting a card and adding another.
+`priority`, `dueDate`, and `labels` default to `null`, `null`, and `[]`, so a board written
+before these fields existed reads back unchanged: Pydantic fills in the defaults, no
+migration needed.
 
 ## Invariants
 
@@ -110,6 +129,12 @@ cannot enforce them, so they are enforced in the application.
 3. Each `cards[key].id` equals its own key.
 4. Column ids are unique within the board.
 5. `title` is a non-empty string once trimmed. `details` may be empty.
+
+`priority` must be `null`, `"low"`, `"medium"`, or `"high"`. `dueDate` must be `null` or an
+ISO date string. `labels` are trimmed, non-blank, and capped at `MAX_LABELS` entries of
+`MAX_LABEL_LENGTH` characters each. None of these three participate in the five numbered
+invariants above: they describe a card, not the board's shape, so a bad value is a plain
+Pydantic field error rather than a cross-referenced invariant failure.
 
 The board is also bounded: at most `MAX_COLUMNS` columns and `MAX_CARDS` cards, with titles
 up to `MAX_TITLE_LENGTH` and details up to `MAX_DETAILS_LENGTH`, all in `models.py`. The

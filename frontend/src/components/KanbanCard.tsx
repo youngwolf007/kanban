@@ -16,7 +16,7 @@ type KanbanCardProps = {
 const PRIORITY_STYLES: Record<string, string> = {
   low: "border-[var(--primary-blue)]/30 bg-[var(--primary-blue)]/10 text-[var(--primary-blue-text)]",
   medium: "border-[var(--accent-yellow)]/50 bg-[var(--accent-yellow)]/15 text-[var(--navy-dark)]",
-  high: "border-[var(--secondary-purple)]/30 bg-[var(--secondary-purple)]/10 text-[var(--secondary-purple)]",
+  high: "border-[var(--secondary-purple)]/30 bg-[var(--secondary-purple)]/10 text-[var(--secondary-purple-text)]",
 };
 
 const draftFromCard = (card: Card): CardInput => ({
@@ -93,7 +93,7 @@ export const KanbanCard = ({
       <article
         ref={setNodeRef}
         style={style}
-        className="rounded-2xl border border-[var(--primary-blue)] bg-white px-4 py-4 shadow-[0_12px_24px_rgba(3,33,71,0.08)]"
+        className="rounded-2xl border border-[var(--primary-blue)] bg-[var(--surface-strong)] px-4 py-4 shadow-[0_12px_24px_rgba(3,33,71,0.08)]"
         data-testid={`card-${card.id}`}
       >
         <form onSubmit={handleSubmit} className="space-y-3">
@@ -103,7 +103,7 @@ export const KanbanCard = ({
               setDraft((prev) => ({ ...prev, title: event.target.value }))
             }
             aria-label="Card title"
-            className="w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm font-semibold text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
+            className="w-full rounded-xl border border-[var(--stroke)] bg-[var(--surface-strong)] px-3 py-2 text-sm font-semibold text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
             required
           />
           <textarea
@@ -113,7 +113,7 @@ export const KanbanCard = ({
             }
             aria-label="Card details"
             rows={3}
-            className="w-full resize-none rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--gray-text)] outline-none transition focus:border-[var(--primary-blue)]"
+            className="w-full resize-none rounded-xl border border-[var(--stroke)] bg-[var(--surface-strong)] px-3 py-2 text-sm text-[var(--gray-text)] outline-none transition focus:border-[var(--primary-blue)]"
           />
           <CardMetaFields
             priority={draft.priority}
@@ -148,7 +148,7 @@ export const KanbanCard = ({
       ref={setCardRef}
       style={style}
       className={clsx(
-        "rounded-2xl border border-transparent bg-white px-4 py-4 shadow-[0_12px_24px_rgba(3,33,71,0.08)]",
+        "rounded-2xl border border-transparent bg-[var(--surface-strong)] px-4 py-4 shadow-[0_12px_24px_rgba(3,33,71,0.08)]",
         "transition-all duration-150",
         isDragging && "opacity-60 shadow-[0_18px_32px_rgba(3,33,71,0.16)]",
         isHighlighted && "ring-2 ring-[var(--accent-yellow)]",
@@ -205,7 +205,7 @@ export const KanbanCard = ({
                   className={clsx(
                     "rounded-full border px-2 py-0.5 text-[10px] font-semibold",
                     isOverdue(card.dueDate)
-                      ? "border-[var(--secondary-purple)]/30 bg-[var(--secondary-purple)]/10 text-[var(--secondary-purple)]"
+                      ? "border-[var(--secondary-purple)]/30 bg-[var(--secondary-purple)]/10 text-[var(--secondary-purple-text)]"
                       : "border-[var(--stroke)] bg-[var(--surface)] text-[var(--gray-text)]"
                   )}
                 >

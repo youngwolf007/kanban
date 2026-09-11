@@ -317,15 +317,15 @@ export const KanbanBoard = ({
 
   return (
     <div className="relative">
-      {/* overflow-hidden lives on this wrapper, not the outer div: an overflow-hidden
-          ancestor is a scroll container, which breaks the header's position: sticky
-          below by resolving it against the wrong scrollport. */}
+      {/* overflow-hidden clips the decorative glow so it cannot widen the page;
+          it lives on this wrapper rather than the outer div so it does not also
+          clip the board switcher's dropdown, which opens below the header. */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <BackgroundGlow />
       </div>
 
       <main className="relative mx-auto flex min-h-screen max-w-[1600px] flex-col gap-6 px-6 pb-16 pt-10">
-        <header className="sticky top-4 z-20 flex flex-wrap items-start justify-between gap-6 rounded-[32px] border border-[var(--stroke)] bg-white/80 px-8 py-6 shadow-[var(--shadow)] backdrop-blur">
+        <header className="flex flex-wrap items-start justify-between gap-6 rounded-[32px] border border-[var(--stroke)] bg-[var(--surface-strong)]/80 px-8 py-6 shadow-[var(--shadow)] backdrop-blur">
           <div>
             <BoardSwitcher
               boards={boards}

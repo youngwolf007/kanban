@@ -5,7 +5,7 @@ type KanbanCardPreviewProps = {
 };
 
 export const KanbanCardPreview = ({ card }: KanbanCardPreviewProps) => (
-  <article className="rounded-2xl border border-transparent bg-white px-4 py-4 shadow-[0_18px_32px_rgba(3,33,71,0.16)]">
+  <article className="rounded-2xl border border-transparent bg-[var(--surface-strong)] px-4 py-4 shadow-[0_18px_32px_rgba(3,33,71,0.16)]">
     <div className="flex items-start justify-between gap-3">
       {/* min-w-0 break-words for the same reason as KanbanCard: without it a long
           word refuses to shrink and spills out of the preview. */}

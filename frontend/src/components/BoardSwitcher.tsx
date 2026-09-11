@@ -110,7 +110,7 @@ export const BoardSwitcher = ({
       {isOpen && (
         <div
           data-testid="board-menu"
-          className="absolute left-0 top-full z-30 mt-2 w-80 rounded-2xl border border-[var(--stroke)] bg-white p-2 normal-case tracking-normal shadow-[var(--shadow)]"
+          className="absolute left-0 top-full z-30 mt-2 w-80 rounded-2xl border border-[var(--stroke)] bg-[var(--surface-strong)] p-2 normal-case tracking-normal shadow-[var(--shadow)]"
         >
           <ul className="flex max-h-80 flex-col gap-1 overflow-y-auto">
             {boards.map((board) => (
@@ -135,7 +135,7 @@ export const BoardSwitcher = ({
                         }
                       }}
                       aria-label={`New name for ${board.name}`}
-                      className="min-w-0 flex-1 rounded-lg border border-[var(--primary-blue)] bg-white px-2 py-1 text-sm outline-none"
+                      className="min-w-0 flex-1 rounded-lg border border-[var(--primary-blue)] bg-[var(--surface-strong)] px-2 py-1 text-sm outline-none"
                     />
                   ) : (
                     <button
@@ -229,7 +229,7 @@ export const BoardSwitcher = ({
                       </div>
                     ))}
                     {memberError && (
-                      <p role="alert" className="px-1 py-1 text-xs text-[var(--secondary-purple)]">
+                      <p role="alert" className="px-1 py-1 text-xs text-[var(--secondary-purple-text)]">
                         {memberError}
                       </p>
                     )}
@@ -245,7 +245,7 @@ export const BoardSwitcher = ({
                         onChange={(event) => setInviteUsername(event.target.value)}
                         placeholder="Invite by username"
                         aria-label={`Invite a member to ${board.name}`}
-                        className="min-w-0 flex-1 rounded-lg border border-[var(--stroke)] bg-white px-2 py-1 text-xs outline-none focus:border-[var(--primary-blue)]"
+                        className="min-w-0 flex-1 rounded-lg border border-[var(--stroke)] bg-[var(--surface-strong)] px-2 py-1 text-xs outline-none focus:border-[var(--primary-blue)]"
                       />
                       <button
                         type="submit"

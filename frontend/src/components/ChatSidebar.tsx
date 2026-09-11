@@ -84,7 +84,7 @@ export const ChatSidebar = ({ boardId, onBoardChange }: ChatSidebarProps) => {
       <div
         aria-hidden="true"
         onClick={() => setIsOpen(false)}
-        className="fixed inset-0 z-30 bg-[var(--navy-dark)]/20"
+        className="fixed inset-0 z-30 bg-[var(--scrim)]"
       />
       <aside
         data-testid="chat-sidebar"
@@ -165,7 +165,7 @@ export const ChatSidebar = ({ boardId, onBoardChange }: ChatSidebarProps) => {
             onChange={(event) => setDraft(event.target.value)}
             rows={3}
             placeholder="Ask a question or describe a change"
-            className="resize-none rounded-2xl border border-[var(--stroke)] bg-white px-4 py-3 text-sm leading-6 text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
+            className="resize-none rounded-2xl border border-[var(--stroke)] bg-[var(--surface-strong)] px-4 py-3 text-sm leading-6 text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
           />
           <button
             type="submit"

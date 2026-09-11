@@ -34,10 +34,12 @@ src/
     CardMetaFields.tsx     priority/due-date/labels inputs shared by add and edit forms
     NewCardForm.tsx        collapsed "Add a card" button expanding to a full card form
     UndoToast.tsx          "Deleted X · Undo" toast shown after a card delete
+    ThemeToggle.tsx        fixed corner button that flips light/dark mode
   lib/
     kanban.ts             types, seed data, the moveCard reducer, createId
     api.ts                fetch wrappers for the auth, boards, and chat APIs
     useOnClickOutside.ts  hook backing BoardSwitcher's click-away close
+    theme.ts              read/resolve/apply the light or dark theme
   test/
     setup.ts       jest-dom matchers
 tests/
@@ -180,6 +182,55 @@ hardcoded hex values, so the palette stays in one place.
 `layout.tsx`. Note that `next/font/google` fetches the fonts at build time, so the Docker
 build stage needs network access.
 
+### Dark mode
+
+Theming is entirely a matter of which values the palette variables hold: `globals.css`
+defines the light palette on `:root` and redefines the ones that need to change for dark
+mode under `[data-theme="dark"]` (`--surface`, `--surface-strong`, `--navy-dark`,
+`--gray-text`, `--stroke`, `--shadow`, `--primary-blue-text`, `--secondary-purple-text`,
+`--scrim`, `--toast-bg`). Components never branch on the theme; they just read the same
+`var(--x)` tokens as always, so a component that already follows the "use the variables"
+rule above is dark-mode-correct for free. `--accent-yellow`, `--primary-blue`, and
+`--secondary-purple` are not overridden — they are used as backgrounds/borders, or already
+clear the AA contrast bar unchanged against the dark surface.
+
+`--navy-dark` is the foreground/heading token; in dark mode it holds a light color, which
+is why `body`'s `color` and `@theme inline`'s `--color-foreground` already read it instead
+of a separate "text" variable. `--primary-blue-text` and `--secondary-purple-text` exist
+because their non-text counterparts (`--primary-blue`, `--secondary-purple`) stay put as
+button/background colors: text needs a lighter tint to clear AA on a dark surface, but a
+button's background does not get lighter just because the page went dark. `--scrim` and
+`--toast-bg` exist for the same reason: both want to stay dark in both themes (the chat
+panel's dimming overlay, the undo toast's pill), so they cannot just read `--navy-dark`
+once it flips to a light color.
+
+Every dark-mode value was chosen by computing its actual contrast ratio against the
+surface it renders on (relative luminance, same formula as the light-mode comments already
+in `globals.css`), not by eye. Re-derive the ratio before changing one.
+
+The mechanism lives in `lib/theme.ts` (`getStoredTheme`, `getSystemTheme`, `resolveTheme`,
+`setDocumentTheme`, `persistTheme`) and `components/ThemeToggle.tsx`, rendered once by
+`App.tsx` so it is present on the login form and every board. The theme is an attribute,
+`data-theme` on `<html>`, not a class, and not React state that anything but the toggle's
+own icon depends on. `layout.tsx` inlines a small blocking script (`next/script` with
+`strategy="beforeInteractive"`) that sets `data-theme` before the first paint, reading
+`localStorage` and falling back to `prefers-color-scheme`; without it the static export
+would flash light before React hydrates and corrects it. `<html>` carries
+`suppressHydrationWarning` because that attribute is deliberately set outside React's
+render.
+
+`ThemeToggle` itself renders `theme` state starting at `"light"` regardless of the real
+preference, because Next's static export prerenders the page server-side, where there is
+no `window` to read `matchMedia` or `localStorage` from; reading either at render time
+breaks the build. The real value is resolved in a mount-only effect. This means the page's
+colors are always correct on first paint (the inline script already set them), but the
+toggle's own icon can flash from its light-mode default to the real one for a frame after
+mount — a deliberate, contained tradeoff, not a bug to fix by making the initial render
+theme-aware.
+
+An explicit toggle click always wins over the OS preference from then on, because
+`persistTheme` writes to `localStorage` and `resolveTheme` checks storage first.
+
 ## Testing
 
 - `npm run test:unit` runs Vitest over `src/**/*.{test,spec}.{ts,tsx}` in jsdom
@@ -197,8 +248,16 @@ board adoption, all driven directly with a fixed `boardId` and one-board `boards
 existing one, switching, creating, renaming, deleting (including recreating after the last
 board is deleted), and the board-list load error; `BoardSwitcher.test.tsx` covers the
 dropdown in isolation with mocked callbacks; `App.test.tsx` covers sign in, registration
-(including a taken username), and sign out; `kanban.spec.ts` covers loading, console errors,
-the API route, add, delete, rename, and a mouse-driven drag between columns.
+(including a taken username), and sign out; `theme.test.ts` covers reading, resolving
+(stored beats system, system as fallback), and applying a theme, including a storage
+read/write that throws; `ThemeToggle.test.tsx` covers the initial icon/label for both a
+light and dark system preference, a stored theme overriding the system preference, and
+toggling in each direction; `kanban.spec.ts` covers loading, console errors, the API route,
+add, delete, rename, and a mouse-driven drag between columns; `theme.spec.ts` covers the
+light default, toggling in both directions (asserting the actual computed background
+color, not just the `data-theme` attribute), following the OS preference when nothing is
+stored, an explicit choice surviving both a reload and a later OS preference change, and
+the toggle working before sign-in with the choice carrying into the board.
 
 One selector trap, hit in practice:
 
@@ -262,6 +321,8 @@ Components expose stable test ids that both suites rely on. Do not rename them c
 - `data-testid="chat-user"` and `data-testid="chat-assistant"` on message bubbles
 - `data-testid="chat-pending"` while a reply is in flight, `chat-error` when one fails
 - `aria-label="Message the assistant"` on the chat composer
+- `data-testid="theme-toggle"` the light/dark toggle, fixed top-right on every screen;
+  `aria-label` is "Switch to dark mode" or "Switch to light mode", whichever it does next
 
 ## The chat panel
 

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getSession, logout, type Session } from "@/lib/api";
 import { LoginForm } from "@/components/LoginForm";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { Workspace } from "@/components/Workspace";
 
 export const App = () => {
@@ -25,24 +26,35 @@ export const App = () => {
 
   if (isChecking) {
     return (
-      <div
-        role="status"
-        className="flex min-h-screen items-center justify-center text-xs font-semibold uppercase tracking-[0.3em] text-[var(--gray-text)]"
-      >
-        Loading
-      </div>
+      <>
+        <ThemeToggle />
+        <div
+          role="status"
+          className="flex min-h-screen items-center justify-center text-xs font-semibold uppercase tracking-[0.3em] text-[var(--gray-text)]"
+        >
+          Loading
+        </div>
+      </>
     );
   }
 
   if (!session) {
-    return <LoginForm onSignedIn={setSession} />;
+    return (
+      <>
+        <ThemeToggle />
+        <LoginForm onSignedIn={setSession} />
+      </>
+    );
   }
 
   return (
-    <Workspace
-      userId={session.id}
-      username={session.username}
-      onSignOut={handleSignOut}
-    />
+    <>
+      <ThemeToggle />
+      <Workspace
+        userId={session.id}
+        username={session.username}
+        onSignOut={handleSignOut}
+      />
+    </>
   );
 };

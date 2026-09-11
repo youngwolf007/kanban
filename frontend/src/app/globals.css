@@ -1,12 +1,18 @@
 @import "tailwindcss";
 
 :root {
+  color-scheme: light;
   --accent-yellow: #ecad0a;
   --primary-blue: #209dd7;
   /* Same hue as --primary-blue, darkened until it clears 4.5:1 on white. Use this
      for text; --primary-blue itself only clears the 3:1 non-text/UI-component bar. */
   --primary-blue-text: #0e7490;
   --secondary-purple: #753991;
+  /* Same value as --secondary-purple: already 7.6:1 on white, so text usage can
+     share it in light mode. Dark mode needs a lighter tint (see below), which is
+     why this is its own token rather than every text usage reading
+     --secondary-purple directly. */
+  --secondary-purple-text: #753991;
   --navy-dark: #032147;
   /* #888888 (the documented palette value) is 3.54:1 on white, below the 4.5:1 AA
      text bar. Darkened to the point it clears AA while staying a supporting gray. */
@@ -15,6 +21,34 @@
   --surface-strong: #ffffff;
   --stroke: rgba(3, 33, 71, 0.08);
   --shadow: 0 18px 40px rgba(3, 33, 71, 0.12);
+  /* Dimming scrim behind the chat panel. Same navy as --navy-dark at 20%, kept as
+     its own token because --navy-dark itself flips to a light color in dark mode
+     and a scrim must stay dark in both themes. */
+  --scrim: rgba(3, 33, 71, 0.2);
+  /* The undo toast is deliberately a dark pill in both themes, so it needs its own
+     token instead of --navy-dark, which becomes a light foreground color in dark
+     mode. */
+  --toast-bg: #032147;
+}
+
+/* Values re-measured for a dark surface with the same formula the light palette
+   above uses: relative-luminance contrast against the background it actually sits
+   on, 4.5:1 for text and 3:1 for non-text UI. --accent-yellow, --primary-blue, and
+   --secondary-purple are not overridden: they are used as backgrounds/borders, or
+   already clear the bars unchanged (checked with the palette's own contrast
+   formula, not by eye). */
+[data-theme="dark"] {
+  color-scheme: dark;
+  --primary-blue-text: #67d2f5;
+  --secondary-purple-text: #c084fc;
+  --navy-dark: #e8ecf4;
+  --gray-text: #98a2b8;
+  --surface: #0b1220;
+  --surface-strong: #141d2e;
+  --stroke: rgba(255, 255, 255, 0.12);
+  --shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+  --scrim: rgba(0, 0, 0, 0.55);
+  --toast-bg: #050b16;
 }
 
 @theme inline {

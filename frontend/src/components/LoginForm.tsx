@@ -41,7 +41,7 @@ export const LoginForm = ({ onSignedIn }: LoginFormProps) => {
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-6">
       <BackgroundGlow />
 
-      <main className="relative w-full max-w-md rounded-[32px] border border-[var(--stroke)] bg-white/85 p-10 shadow-[var(--shadow)] backdrop-blur">
+      <main className="relative w-full max-w-md rounded-[32px] border border-[var(--stroke)] bg-[var(--surface-strong)]/85 p-10 shadow-[var(--shadow)] backdrop-blur">
         <div className="h-2 w-12 rounded-full bg-[var(--accent-yellow)]" />
         <p className="mt-6 text-xs font-semibold uppercase tracking-[0.35em] text-[var(--gray-text)]">
           Project Workspace
@@ -70,7 +70,7 @@ export const LoginForm = ({ onSignedIn }: LoginFormProps) => {
               onChange={(event) => setUsername(event.target.value)}
               autoComplete="username"
               required
-              className="mt-2 w-full rounded-xl border border-[var(--stroke)] bg-white px-4 py-3 text-sm font-medium text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
+              className="mt-2 w-full rounded-xl border border-[var(--stroke)] bg-[var(--surface-strong)] px-4 py-3 text-sm font-medium text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
             />
           </div>
 
@@ -90,7 +90,7 @@ export const LoginForm = ({ onSignedIn }: LoginFormProps) => {
               autoComplete={mode === "signIn" ? "current-password" : "new-password"}
               minLength={mode === "register" ? 8 : undefined}
               required
-              className="mt-2 w-full rounded-xl border border-[var(--stroke)] bg-white px-4 py-3 text-sm font-medium text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
+              className="mt-2 w-full rounded-xl border border-[var(--stroke)] bg-[var(--surface-strong)] px-4 py-3 text-sm font-medium text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
             />
             {mode === "register" && (
               <p className="mt-1.5 text-xs text-[var(--gray-text)]">

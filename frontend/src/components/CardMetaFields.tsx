@@ -10,7 +10,7 @@ type CardMetaFieldsProps = {
 };
 
 const fieldClassName =
-  "rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]";
+  "rounded-xl border border-[var(--stroke)] bg-[var(--surface-strong)] px-3 py-2 text-sm text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]";
 
 export const CardMetaFields = ({
   priority,

@@ -132,7 +132,7 @@ export const Workspace = ({ userId, username, onSignOut }: WorkspaceProps) => {
         <p
           role="alert"
           data-testid="workspace-error"
-          className="fixed left-1/2 top-4 z-50 -translate-x-1/2 rounded-xl border border-[var(--accent-yellow)] bg-white px-4 py-3 text-sm text-[var(--navy-dark)] shadow-[var(--shadow)]"
+          className="fixed left-1/2 top-4 z-50 -translate-x-1/2 rounded-xl border border-[var(--accent-yellow)] bg-[var(--surface-strong)] px-4 py-3 text-sm text-[var(--navy-dark)] shadow-[var(--shadow)]"
         >
           {error}
         </p>

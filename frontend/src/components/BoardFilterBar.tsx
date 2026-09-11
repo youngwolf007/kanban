@@ -13,14 +13,14 @@ export const BoardFilterBar = ({
   matchCount,
   totalCount,
 }: BoardFilterBarProps) => (
-  <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-[var(--stroke)] bg-white/70 px-4 py-3 backdrop-blur">
+  <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-[var(--stroke)] bg-[var(--surface-strong)]/70 px-4 py-3 backdrop-blur">
     <input
       type="search"
       value={filters.query}
       onChange={(event) => onChange({ ...filters, query: event.target.value })}
       placeholder="Search title, details, or labels"
       aria-label="Search cards"
-      className="min-w-[14rem] flex-1 rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
+      className="min-w-[14rem] flex-1 rounded-xl border border-[var(--stroke)] bg-[var(--surface-strong)] px-3 py-2 text-sm text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
     />
     <select
       value={filters.priority}
@@ -28,7 +28,7 @@ export const BoardFilterBar = ({
         onChange({ ...filters, priority: event.target.value as Priority | "all" })
       }
       aria-label="Filter by priority"
-      className="rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
+      className="rounded-xl border border-[var(--stroke)] bg-[var(--surface-strong)] px-3 py-2 text-sm text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
     >
       <option value="all">All priorities</option>
       {PRIORITIES.map((option) => (

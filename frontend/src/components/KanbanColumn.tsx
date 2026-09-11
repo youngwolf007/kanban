@@ -2,7 +2,7 @@ import { useState } from "react";
 import clsx from "clsx";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import type { Card, CardInput, Column } from "@/lib/kanban";
+import { matchesFilters, type BoardFilters, type Card, type CardInput, type Column } from "@/lib/kanban";
 import { KanbanCard } from "@/components/KanbanCard";
 import { NewCardForm } from "@/components/NewCardForm";
 
@@ -14,6 +14,7 @@ type KanbanColumnProps = {
   onDeleteCard: (columnId: string, cardId: string) => void;
   onEditCard: (cardId: string, input: CardInput) => void;
   highlightedCardId?: string | null;
+  filters: BoardFilters;
 };
 
 export const KanbanColumn = ({
@@ -24,6 +25,7 @@ export const KanbanColumn = ({
   onDeleteCard,
   onEditCard,
   highlightedCardId,
+  filters,
 }: KanbanColumnProps) => {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
   const [draft, setDraft] = useState(column.title);
@@ -83,6 +85,7 @@ export const KanbanColumn = ({
               onDelete={(cardId) => onDeleteCard(column.id, cardId)}
               onEdit={onEditCard}
               isHighlighted={card.id === highlightedCardId}
+              isDimmed={!matchesFilters(card, filters)}
             />
           ))}
         </SortableContext>

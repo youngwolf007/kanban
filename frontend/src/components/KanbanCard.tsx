@@ -10,6 +10,7 @@ type KanbanCardProps = {
   onDelete: (cardId: string) => void;
   onEdit: (cardId: string, input: CardInput) => void;
   isHighlighted?: boolean;
+  isDimmed?: boolean;
 };
 
 const PRIORITY_STYLES: Record<string, string> = {
@@ -26,7 +27,13 @@ const draftFromCard = (card: Card): CardInput => ({
   labels: card.labels,
 });
 
-export const KanbanCard = ({ card, onDelete, onEdit, isHighlighted }: KanbanCardProps) => {
+export const KanbanCard = ({
+  card,
+  onDelete,
+  onEdit,
+  isHighlighted,
+  isDimmed,
+}: KanbanCardProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState<CardInput>(draftFromCard(card));
   const [labelsText, setLabelsText] = useState(card.labels.join(", "));
@@ -144,9 +151,11 @@ export const KanbanCard = ({ card, onDelete, onEdit, isHighlighted }: KanbanCard
         "rounded-2xl border border-transparent bg-white px-4 py-4 shadow-[0_12px_24px_rgba(3,33,71,0.08)]",
         "transition-all duration-150",
         isDragging && "opacity-60 shadow-[0_18px_32px_rgba(3,33,71,0.16)]",
-        isHighlighted && "ring-2 ring-[var(--accent-yellow)]"
+        isHighlighted && "ring-2 ring-[var(--accent-yellow)]",
+        isDimmed && "opacity-35"
       )}
       data-testid={`card-${card.id}`}
+      data-card-match={isDimmed ? "false" : "true"}
     >
       <div className="flex items-start gap-2">
         {/* The drag listeners live on their own control. Carrying them on the article

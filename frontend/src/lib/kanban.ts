@@ -49,6 +49,28 @@ export const isOverdue = (
   today: string = new Date().toISOString().slice(0, 10)
 ): boolean => dueDate !== null && dueDate < today;
 
+export type BoardFilters = {
+  query: string;
+  priority: Priority | "all";
+};
+
+export const EMPTY_FILTERS: BoardFilters = { query: "", priority: "all" };
+
+export const hasActiveFilters = (filters: BoardFilters): boolean =>
+  filters.query.trim() !== "" || filters.priority !== "all";
+
+/** A card with no filters applied always matches, so nothing is dimmed by default. */
+export const matchesFilters = (card: Card, filters: BoardFilters): boolean => {
+  const query = filters.query.trim().toLowerCase();
+  const matchesQuery =
+    query === "" ||
+    card.title.toLowerCase().includes(query) ||
+    card.details.toLowerCase().includes(query) ||
+    card.labels.some((label) => label.toLowerCase().includes(query));
+  const matchesPriority = filters.priority === "all" || card.priority === filters.priority;
+  return matchesQuery && matchesPriority;
+};
+
 /**
  * Shown for a card with no details. A fallback at render time, never written into
  * the board: the AI does not apply it, so storing it would make two identical empty

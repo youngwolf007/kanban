@@ -25,6 +25,7 @@ src/
     LoginForm.tsx          username and password form; toggles between sign in and register
     Workspace.tsx          owns the signed-in user's board list and which one is open
     BoardSwitcher.tsx      dropdown in the header: switch, create, rename, delete a board
+    BoardFilterBar.tsx     search text and priority filter, dims non-matching cards
     KanbanBoard.tsx        owns one open board's state and every content mutation handler
     ChatSidebar.tsx        the AI chat panel, overlaid on the board, scoped to one board
     KanbanColumn.tsx       one column, droppable, holds the sortable card list
@@ -72,6 +73,12 @@ type BoardData = { columns: Column[]; cards: Record<string, Card> };
 priority/due-date/labels control group shared between them. The labels field is free text;
 `parseLabels` splits it on commas and drops blank entries, and `isOverdue` compares a
 card's `dueDate` against today to flag it in the UI.
+
+`BoardFilterBar` holds a search box and a priority select. `KanbanBoard` keeps the
+resulting `BoardFilters` in state (reset for free on every board switch, since `Workspace`
+remounts `KanbanBoard` by key) and passes it down to each `KanbanColumn`, which marks a
+card that fails `matchesFilters` as dimmed rather than removing it: cards stay in the DOM
+and in `dnd-kit`'s `SortableContext`, so dragging is unaffected by an active filter.
 
 Cards are held in a flat `cards` map; each column keeps an ordered `cardIds` array. Order
 lives in the column, not on the card. This shape is what the backend stores as one board's
@@ -232,6 +239,10 @@ Components expose stable test ids that both suites rely on. Do not rename them c
 - `aria-label="Card title"` and `aria-label="Card details"` on the card edit form
 - `aria-label="Card priority"`, `aria-label="Card due date"`, and `aria-label="Card labels"`
   on the priority/due-date/labels controls, shared by `NewCardForm` and the card edit form
+- `aria-label="Search cards"` and `aria-label="Filter by priority"` on `BoardFilterBar`'s
+  controls; `data-testid="filter-summary"` on its match count
+- `data-card-match="true"`/`"false"` on each card, reflecting whether it passes the active
+  filters (always `"true"` when no filter is set)
 - `data-testid="column-{columnId}"` on each column
 - `data-testid="card-{cardId}"` on each card
 - `aria-label="Column title: {column title}"` on the column title input; both suites match

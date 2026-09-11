@@ -1,4 +1,23 @@
-import { createId, isOverdue, moveCard, parseLabels, type Column } from "@/lib/kanban";
+import {
+  createId,
+  hasActiveFilters,
+  isOverdue,
+  matchesFilters,
+  moveCard,
+  parseLabels,
+  type Card,
+  type Column,
+} from "@/lib/kanban";
+
+const card = (overrides: Partial<Card> = {}): Card => ({
+  id: "card-1",
+  title: "Align roadmap themes",
+  details: "Draft the quarterly plan",
+  priority: "high",
+  dueDate: null,
+  labels: ["roadmap", "q3"],
+  ...overrides,
+});
 
 describe("moveCard", () => {
   const baseColumns: Column[] = [
@@ -91,5 +110,56 @@ describe("isOverdue", () => {
 
   it("is true for a due date in the past", () => {
     expect(isOverdue("2026-09-10", "2026-09-11")).toBe(true);
+  });
+});
+
+describe("matchesFilters", () => {
+  it("matches everything when no filter is set", () => {
+    expect(matchesFilters(card(), { query: "", priority: "all" })).toBe(true);
+  });
+
+  it("matches on title, case-insensitively", () => {
+    expect(matchesFilters(card(), { query: "ROADMAP", priority: "all" })).toBe(true);
+  });
+
+  it("matches on details", () => {
+    expect(matchesFilters(card(), { query: "quarterly", priority: "all" })).toBe(true);
+  });
+
+  it("matches on a label", () => {
+    expect(matchesFilters(card(), { query: "q3", priority: "all" })).toBe(true);
+  });
+
+  it("does not match unrelated text", () => {
+    expect(matchesFilters(card(), { query: "nothing here", priority: "all" })).toBe(
+      false
+    );
+  });
+
+  it("filters by priority", () => {
+    expect(matchesFilters(card({ priority: "low" }), { query: "", priority: "high" })).toBe(
+      false
+    );
+    expect(matchesFilters(card({ priority: "high" }), { query: "", priority: "high" })).toBe(
+      true
+    );
+  });
+
+  it("requires both query and priority to match when both are set", () => {
+    const filters = { query: "roadmap", priority: "low" as const };
+    expect(matchesFilters(card({ priority: "high" }), filters)).toBe(false);
+    expect(matchesFilters(card({ priority: "low" }), filters)).toBe(true);
+  });
+});
+
+describe("hasActiveFilters", () => {
+  it("is false for the empty filters", () => {
+    expect(hasActiveFilters({ query: "", priority: "all" })).toBe(false);
+    expect(hasActiveFilters({ query: "   ", priority: "all" })).toBe(false);
+  });
+
+  it("is true once a query or priority is set", () => {
+    expect(hasActiveFilters({ query: "milk", priority: "all" })).toBe(true);
+    expect(hasActiveFilters({ query: "", priority: "high" })).toBe(true);
   });
 });

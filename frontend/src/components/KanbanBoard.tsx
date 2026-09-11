@@ -12,6 +12,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { BackgroundGlow } from "@/components/BackgroundGlow";
+import { BoardFilterBar } from "@/components/BoardFilterBar";
 import { BoardSwitcher } from "@/components/BoardSwitcher";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { KanbanColumn } from "@/components/KanbanColumn";
@@ -20,8 +21,11 @@ import { UndoToast } from "@/components/UndoToast";
 import { getBoard, saveBoard, type BoardSummary } from "@/lib/api";
 import {
   createId,
+  matchesFilters,
   moveCard,
+  EMPTY_FILTERS,
   type BoardData,
+  type BoardFilters,
   type Card,
   type CardInput,
 } from "@/lib/kanban";
@@ -65,6 +69,7 @@ export const KanbanBoard = ({
   const [error, setError] = useState<string | null>(null);
   const [deletedCard, setDeletedCard] = useState<DeletedCard | null>(null);
   const [highlightedCardId, setHighlightedCardId] = useState<string | null>(null);
+  const [filters, setFilters] = useState<BoardFilters>(EMPTY_FILTERS);
   const renameTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingRename = useRef<BoardData | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -360,6 +365,16 @@ export const KanbanBoard = ({
           </p>
         )}
 
+        <BoardFilterBar
+          filters={filters}
+          onChange={setFilters}
+          matchCount={
+            Object.values(board.cards).filter((card) => matchesFilters(card, filters))
+              .length
+          }
+          totalCount={Object.keys(board.cards).length}
+        />
+
         <DndContext
           sensors={sensors}
           collisionDetection={closestCorners}
@@ -377,6 +392,7 @@ export const KanbanBoard = ({
                 onDeleteCard={handleDeleteCard}
                 onEditCard={handleEditCard}
                 highlightedCardId={highlightedCardId}
+                filters={filters}
               />
             ))}
           </section>

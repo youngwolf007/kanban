@@ -447,6 +447,42 @@ describe("KanbanBoard", () => {
     });
   });
 
+  describe("filtering", () => {
+    it("shows how many cards match out of the total", async () => {
+      await renderBoard();
+      expect(screen.getByTestId("filter-summary")).toHaveTextContent("8 of 8 cards match");
+    });
+
+    it("dims cards that do not match a search", async () => {
+      await renderBoard();
+      await userEvent.type(screen.getByLabelText("Search cards"), "roadmap");
+
+      expect(screen.getByTestId("filter-summary")).toHaveTextContent("1 of 8 cards match");
+      expect(screen.getByTestId("card-card-1")).toHaveAttribute(
+        "data-card-match",
+        "true"
+      );
+      expect(screen.getByTestId("card-card-2")).toHaveAttribute(
+        "data-card-match",
+        "false"
+      );
+    });
+
+    it("filters by priority", async () => {
+      await renderBoard();
+      await userEvent.selectOptions(
+        screen.getByLabelText("Filter by priority"),
+        "high"
+      );
+
+      expect(screen.getByTestId("filter-summary")).toHaveTextContent("1 of 8 cards match");
+      expect(screen.getByTestId("card-card-1")).toHaveAttribute(
+        "data-card-match",
+        "true"
+      );
+    });
+  });
+
   it("does not add a card when the title is only whitespace", async () => {
     await renderBoard();
     const column = getFirstColumn();
